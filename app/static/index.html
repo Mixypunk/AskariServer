@@ -652,16 +652,28 @@ async function doLogin() {
   const u = document.getElementById('lu').value.trim();
   const p = document.getElementById('lp').value;
   const e = document.getElementById('lerr'); e.textContent = '';
+  const btn = document.querySelector('.lbtn');
   if (!u || !p) { e.textContent = 'Remplissez tous les champs'; return; }
+  // Loading state
+  const origText = btn.textContent;
+  btn.textContent = 'Connexion…'; btn.disabled = true; btn.style.opacity = '0.6';
   try {
     const r = await fetch('/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: u, password: p })
     });
-    if (!r.ok) { e.textContent = 'Identifiants incorrects'; return; }
+    if (!r.ok) {
+      const d = await r.json().catch(() => null);
+      e.textContent = d?.detail || 'Identifiants incorrects';
+      btn.textContent = origText; btn.disabled = false; btn.style.opacity = '';
+      return;
+    }
     const d = await r.json(); tok = d.accesstoken;
     localStorage.setItem('ask_tok', tok); boot();
-  } catch { e.textContent = 'Erreur réseau'; }
+  } catch (err) {
+    e.textContent = 'Erreur réseau — serveur inaccessible';
+    btn.textContent = origText; btn.disabled = false; btn.style.opacity = '';
+  }
 }
 
 function doLogout() {
@@ -1219,16 +1231,16 @@ document.addEventListener('keydown', e => {
   if (e.code === 'ArrowLeft'  && e.altKey)  prev();
   if (e.code === 'ArrowRight' && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
     e.preventDefault();
-    if (aud) { aud.currentTime = Math.min(aud.duration || 0, aud.currentTime + 10); updProgress(); }
+    if (aud && aud.duration) { aud.currentTime = Math.min(aud.duration, aud.currentTime + 10); }
   }
   if (e.code === 'ArrowLeft' && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
     e.preventDefault();
-    if (aud) { aud.currentTime = Math.max(0, aud.currentTime - 10); updProgress(); }
+    if (aud) { aud.currentTime = Math.max(0, aud.currentTime - 10); }
   }
   if (e.code === 'ArrowUp')   { e.preventDefault(); if (aud) { aud.volume = Math.min(1, aud.volume + 0.1); updVol(); } }
   if (e.code === 'ArrowDown') { e.preventDefault(); if (aud) { aud.volume = Math.max(0, aud.volume - 0.1); updVol(); } }
   if (e.code === 'KeyM') { if (aud) { aud.muted = !aud.muted; updVol(); } }
-  if (e.code === 'KeyF' && !e.ctrlKey && !e.metaKey) { if (curSong) toggleFav(curSong.trackhash); }
+  if (e.code === 'KeyF' && !e.ctrlKey && !e.metaKey) { togFavCur(); }
   if (e.code === 'KeyL') openLyrics();
   if ((e.ctrlKey || e.metaKey) && e.code === 'KeyF') { e.preventDefault(); go('search'); }
   if (e.code === 'Escape') {

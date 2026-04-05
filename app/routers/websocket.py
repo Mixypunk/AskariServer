@@ -153,8 +153,6 @@ async def _scrobble(user_id: int, data: dict):
             entry = PlayHistory(
                 user_id=user_id,
                 song_id=song.id,
-                duration_played=position,
-                completed=completed,
             )
             db.add(entry)
 

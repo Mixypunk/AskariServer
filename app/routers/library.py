@@ -5,7 +5,7 @@ Compatible avec l'API attendue par l'app mobile AskaMusic
 import time
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, desc
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from typing import Optional, List

@@ -1,4 +1,4 @@
-const CACHE = 'askaria-v2';
+const CACHE = 'askaria-v3';
 const ASSETS = [
   '/',
   '/static/index.html',
