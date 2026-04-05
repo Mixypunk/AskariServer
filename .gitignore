@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Environnement
+.env
+!.env.example
+
+# Données runtime (ne pas versionner la DB ni le cache)
+*.db
+*.db-shm
+*.db-wal
+data/
+cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp

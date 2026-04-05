@@ -1,0 +1,1107 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AskariServer — Administration</title>
+<style>
+  :root {
+    --bg:       #0a0a0f;
+    --bg2:      #12121a;
+    --bg3:      #1a1a26;
+    --card:     #1e1e2e;
+    --border:   #2a2a3e;
+    --accent:   #7c3aed;
+    --accent2:  #a855f7;
+    --green:    #22c55e;
+    --red:      #ef4444;
+    --amber:    #f59e0b;
+    --blue:     #3b82f6;
+    --text:     #e2e8f0;
+    --text2:    #94a3b8;
+    --text3:    #64748b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh;
+    display: flex; flex-direction: column;
+  }
+
+  /* ── Login ── */
+  #login-screen {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; padding: 1rem;
+  }
+  .login-box {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 2.5rem; width: 100%; max-width: 380px;
+  }
+  .login-logo { text-align: center; margin-bottom: 2rem; }
+  .login-logo .icon { font-size: 48px; margin-bottom: .5rem; }
+  .login-logo h1 { font-size: 22px; font-weight: 700; color: var(--text); }
+  .login-logo p { font-size: 13px; color: var(--text2); margin-top: 4px; }
+
+  /* ── App ── */
+  #app { display: none; flex-direction: column; min-height: 100vh; }
+
+  /* Sidebar */
+  .sidebar {
+    width: 220px; background: var(--bg2); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; position: fixed;
+    top: 0; left: 0; bottom: 0; z-index: 100;
+  }
+  .sidebar-logo {
+    padding: 1.25rem 1rem; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .sidebar-logo .logo-icon {
+    width: 34px; height: 34px; background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+  }
+  .sidebar-logo span { font-weight: 700; font-size: 15px; }
+  .nav { padding: .5rem; flex: 1; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px; padding: .6rem .75rem;
+    border-radius: 8px; cursor: pointer; font-size: 14px; color: var(--text2);
+    transition: all .15s; margin-bottom: 2px;
+  }
+  .nav-item:hover { background: var(--bg3); color: var(--text); }
+  .nav-item.active { background: rgba(124,58,237,.2); color: var(--accent2); }
+  .nav-item .icon { font-size: 18px; width: 22px; text-align: center; }
+  .nav-section {
+    font-size: 10px; font-weight: 600; color: var(--text3);
+    letter-spacing: .08em; text-transform: uppercase;
+    padding: .75rem .75rem .3rem;
+  }
+  .sidebar-footer {
+    padding: .75rem; border-top: 1px solid var(--border); font-size: 12px; color: var(--text3);
+  }
+  .sidebar-footer span { display: block; }
+
+  /* Main */
+  .main { margin-left: 220px; flex: 1; display: flex; flex-direction: column; }
+  .topbar {
+    background: var(--bg2); border-bottom: 1px solid var(--border);
+    padding: 0 1.5rem; height: 56px; display: flex; align-items: center;
+    justify-content: space-between; position: sticky; top: 0; z-index: 50;
+  }
+  .topbar h2 { font-size: 17px; font-weight: 600; }
+  .content { padding: 1.5rem; flex: 1; }
+
+  /* Cards */
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem;
+  }
+  .card-title {
+    font-size: 13px; font-weight: 600; color: var(--text2);
+    text-transform: uppercase; letter-spacing: .06em; margin-bottom: 1rem;
+  }
+
+  /* Stats grid */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+  .stat-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.25rem;
+    display: flex; align-items: center; gap: 1rem;
+  }
+  .stat-icon {
+    width: 44px; height: 44px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center; font-size: 22px;
+    flex-shrink: 0;
+  }
+  .stat-icon.purple { background: rgba(124,58,237,.2); }
+  .stat-icon.green  { background: rgba(34,197,94,.2); }
+  .stat-icon.blue   { background: rgba(59,130,246,.2); }
+  .stat-icon.amber  { background: rgba(245,158,11,.2); }
+  .stat-value { font-size: 24px; font-weight: 700; color: var(--text); }
+  .stat-label { font-size: 12px; color: var(--text2); margin-top: 2px; }
+
+  /* Table */
+  .table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    background: var(--bg3); padding: .7rem 1rem; text-align: left;
+    font-weight: 600; color: var(--text2); font-size: 11px;
+    text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid var(--border);
+  }
+  td { padding: .7rem 1rem; border-bottom: 1px solid var(--border); color: var(--text); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--bg3); }
+  .td-muted { color: var(--text2); font-size: 12px; }
+  .td-mono { font-family: monospace; font-size: 11px; color: var(--text3); }
+
+  /* Search */
+  .search-bar {
+    display: flex; gap: .75rem; margin-bottom: 1rem; flex-wrap: wrap;
+  }
+  .search-bar input {
+    flex: 1; min-width: 200px; background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 8px; padding: .5rem .9rem; color: var(--text); font-size: 13px;
+    outline: none; transition: border .15s;
+  }
+  .search-bar input:focus { border-color: var(--accent); }
+
+  /* Inputs */
+  input, select {
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 8px;
+    padding: .55rem .9rem; color: var(--text); font-size: 14px;
+    outline: none; transition: border .15s; width: 100%;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  input[type="password"] { letter-spacing: .1em; }
+  label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 5px; font-weight: 500; }
+  .form-group { margin-bottom: .9rem; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: .5rem 1rem; border-radius: 8px; font-size: 13px;
+    font-weight: 600; cursor: pointer; border: none;
+    transition: all .15s; text-decoration: none;
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: #6d28d9; }
+  .btn-success { background: var(--green); color: white; }
+  .btn-success:hover { background: #16a34a; }
+  .btn-danger { background: var(--red); color: white; }
+  .btn-danger:hover { background: #dc2626; }
+  .btn-ghost {
+    background: transparent; color: var(--text2);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover { background: var(--bg3); color: var(--text); }
+  .btn-sm { padding: .3rem .6rem; font-size: 12px; border-radius: 6px; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* Badge */
+  .badge {
+    display: inline-flex; align-items: center; padding: 2px 8px;
+    border-radius: 999px; font-size: 11px; font-weight: 600;
+  }
+  .badge-green { background: rgba(34,197,94,.15); color: var(--green); }
+  .badge-red   { background: rgba(239,68,68,.15); color: var(--red); }
+  .badge-purple { background: rgba(124,58,237,.15); color: var(--accent2); }
+  .badge-amber { background: rgba(245,158,11,.15); color: var(--amber); }
+  .badge-blue  { background: rgba(59,130,246,.15); color: var(--blue); }
+
+  /* Progress */
+  .progress-bar {
+    background: var(--bg3); border-radius: 999px; height: 8px; overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%; border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    transition: width .5s;
+  }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.7);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; padding: 1rem;
+  }
+  .modal {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 1.75rem; width: 100%; max-width: 440px;
+    max-height: 90vh; overflow-y: auto;
+  }
+  .modal-title { font-size: 17px; font-weight: 700; margin-bottom: 1.25rem; }
+  .modal-actions { display: flex; gap: .75rem; justify-content: flex-end; margin-top: 1.25rem; }
+
+  /* Toast */
+  #toast-container {
+    position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 9999;
+    display: flex; flex-direction: column; gap: .5rem;
+  }
+  .toast {
+    padding: .7rem 1.1rem; border-radius: 10px; font-size: 13px;
+    font-weight: 500; max-width: 340px; animation: slideIn .2s ease;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .toast-success { background: #14532d; color: #4ade80; border: 1px solid #166534; }
+  .toast-error   { background: #450a0a; color: #f87171; border: 1px solid #7f1d1d; }
+  .toast-info    { background: #1e1b4b; color: #818cf8; border: 1px solid #3730a3; }
+  @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+  /* Scan banner */
+  .scan-banner {
+    background: rgba(124,58,237,.1); border: 1px solid rgba(124,58,237,.3);
+    border-radius: 10px; padding: .85rem 1rem; margin-bottom: 1rem;
+    display: none;
+  }
+  .scan-banner.active { display: block; }
+  .scan-info { display: flex; justify-content: space-between; margin-bottom: .5rem; font-size: 13px; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; background: var(--bg3); border-radius: 10px; padding: 4px; margin-bottom: 1rem; }
+  .tab {
+    flex: 1; padding: .45rem .5rem; border-radius: 7px; cursor: pointer;
+    font-size: 13px; font-weight: 500; text-align: center; color: var(--text2);
+    transition: all .15s;
+  }
+  .tab.active { background: var(--card); color: var(--text); }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .sidebar { width: 60px; }
+    .sidebar-logo span, .nav-item span, .nav-section { display: none; }
+    .main { margin-left: 60px; }
+    .form-row { grid-template-columns: 1fr; }
+  }
+
+  .empty-state {
+    text-align: center; padding: 3rem; color: var(--text3);
+  }
+  .empty-state .icon { font-size: 48px; margin-bottom: 1rem; }
+  .empty-state p { font-size: 14px; }
+
+  .audio-format {
+    font-size: 10px; font-weight: 700; padding: 1px 5px;
+    border-radius: 3px; background: rgba(124,58,237,.2); color: var(--accent2);
+    letter-spacing: .05em;
+  }
+  .audio-format.lossless {
+    background: rgba(34,197,94,.15); color: var(--green);
+  }
+</style>
+</head>
+<body>
+
+<!-- ── LOGIN ──────────────────────────────────────────────────── -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="icon">🎵</div>
+      <h1>AskariServer</h1>
+      <p>Interface d'administration</p>
+    </div>
+    <div class="form-group">
+      <label>Utilisateur</label>
+      <input id="login-user" type="text" placeholder="admin" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label>Mot de passe</label>
+      <input id="login-pass" type="password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div id="login-error" style="color:var(--red);font-size:13px;margin-bottom:.75rem;display:none"></div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="doLogin()">
+      Se connecter
+    </button>
+  </div>
+</div>
+
+<!-- ── APP ────────────────────────────────────────────────────── -->
+<div id="app">
+  <div class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🎵</div>
+      <span>AskariServer</span>
+    </div>
+    <nav class="nav">
+      <div class="nav-section">Principal</div>
+      <div class="nav-item active" onclick="showPage('dashboard')">
+        <span class="icon">📊</span><span>Tableau de bord</span>
+      </div>
+      <div class="nav-item" onclick="showPage('library')">
+        <span class="icon">🎵</span><span>Bibliothèque</span>
+      </div>
+      <div class="nav-section">Administration</div>
+      <div class="nav-item" onclick="showPage('users')">
+        <span class="icon">👥</span><span>Utilisateurs</span>
+      </div>
+      <div class="nav-item" onclick="showPage('scan')">
+        <span class="icon">🔍</span><span>Scanner</span>
+      </div>
+      <div class="nav-section">Infos</div>
+      <div class="nav-item" onclick="showPage('stats')">
+        <span class="icon">📈</span><span>Statistiques</span>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <span id="sidebar-user">admin</span>
+      <button class="btn btn-ghost btn-sm" style="margin-top:.5rem;width:100%;justify-content:center" onclick="logout()">
+        Déconnexion
+      </button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <h2 id="page-title">Tableau de bord</h2>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <span id="server-status" class="badge badge-green">● En ligne</span>
+      </div>
+    </div>
+
+    <div class="content">
+      <!-- Scan banner -->
+      <div class="scan-banner" id="scan-banner">
+        <div class="scan-info">
+          <span>🔍 Scan en cours : <span id="scan-current">...</span></span>
+          <span id="scan-count">0 / 0</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="scan-progress" style="width:0%"></div>
+        </div>
+      </div>
+
+      <!-- ── DASHBOARD ── -->
+      <div id="page-dashboard">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon purple">🎵</div>
+            <div><div class="stat-value" id="stat-songs">—</div><div class="stat-label">Titres indexés</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon green">💿</div>
+            <div><div class="stat-value" id="stat-albums">—</div><div class="stat-label">Albums</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon blue">🎤</div>
+            <div><div class="stat-value" id="stat-artists">—</div><div class="stat-label">Artistes</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon amber">👥</div>
+            <div><div class="stat-value" id="stat-users">—</div><div class="stat-label">Utilisateurs</div></div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;flex-wrap:wrap">
+          <div class="card">
+            <div class="card-title">Actions rapides</div>
+            <div style="display:flex;flex-direction:column;gap:.6rem">
+              <button class="btn btn-primary" onclick="startScan()">🔍 Lancer un scan</button>
+              <button class="btn btn-ghost" onclick="showPage('library')">🎵 Voir la bibliothèque</button>
+              <button class="btn btn-ghost" onclick="openModal('modal-add-user')">👤 Ajouter un utilisateur</button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">État du serveur</div>
+            <div style="font-size:13px;display:flex;flex-direction:column;gap:.5rem">
+              <div style="display:flex;justify-content:space-between">
+                <span style="color:var(--text2)">Version</span>
+                <span id="info-version">1.0.0</span>
+              </div>
+              <div style="display:flex;justify-content:space-between">
+                <span style="color:var(--text2)">API</span>
+                <span id="info-api-url">—</span>
+              </div>
+              <div style="display:flex;justify-content:space-between">
+                <span style="color:var(--text2)">Status</span>
+                <span class="badge badge-green">En ligne</span>
+              </div>
+              <div style="display:flex;justify-content:space-between">
+                <span style="color:var(--text2)">Docs API</span>
+                <a id="docs-link" href="/docs" target="_blank" style="color:var(--accent2);font-size:12px">Ouvrir →</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Derniers titres ajoutés</div>
+          <div id="recent-songs">
+            <div class="empty-state"><div class="icon">⏳</div><p>Chargement...</p></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── BIBLIOTHÈQUE ── -->
+      <div id="page-library" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem">
+          <div class="tabs" style="flex:1;max-width:340px">
+            <div class="tab active" onclick="libTab('songs',this)">Titres</div>
+            <div class="tab" onclick="libTab('albums',this)">Albums</div>
+            <div class="tab" onclick="libTab('artists',this)">Artistes</div>
+          </div>
+          <div style="display:flex;gap:.5rem">
+            <input id="lib-search" type="text" placeholder="Rechercher..." style="width:220px" oninput="libSearch()">
+            <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇ CSV</button>
+          </div>
+        </div>
+
+        <!-- Titres -->
+        <div id="lib-songs">
+          <div style="font-size:12px;color:var(--text3);margin-bottom:.5rem" id="songs-count">Chargement...</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>#</th><th>Titre</th><th>Artiste</th><th>Album</th>
+                <th>Durée</th><th>Format</th><th>Bitrate</th>
+              </tr></thead>
+              <tbody id="songs-tbody"></tbody>
+            </table>
+          </div>
+          <div style="display:flex;justify-content:center;margin-top:1rem;gap:.5rem">
+            <button class="btn btn-ghost btn-sm" id="prev-btn" onclick="libPrev()">← Précédent</button>
+            <span id="page-info" style="font-size:13px;color:var(--text2);padding:.3rem .6rem"></span>
+            <button class="btn btn-ghost btn-sm" id="next-btn" onclick="libNext()">Suivant →</button>
+          </div>
+        </div>
+
+        <!-- Albums -->
+        <div id="lib-albums" style="display:none">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Album</th><th>Artiste</th><th>Année</th><th>Titres</th></tr></thead>
+              <tbody id="albums-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Artistes -->
+        <div id="lib-artists" style="display:none">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Artiste</th><th>Albums</th><th>Titres</th></tr></thead>
+              <tbody id="artists-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── UTILISATEURS ── -->
+      <div id="page-users" style="display:none">
+        <div style="display:flex;justify-content:space-between;margin-bottom:1rem">
+          <div></div>
+          <button class="btn btn-primary" onclick="openModal('modal-add-user')">
+            + Nouvel utilisateur
+          </button>
+        </div>
+        <div class="card" style="padding:0;overflow:hidden">
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr>
+              <th style="padding:.8rem 1rem">Utilisateur</th>
+              <th>Rôle</th>
+              <th>Dernière connexion</th>
+              <th>Statut</th>
+              <th>Actions</th>
+            </tr></thead>
+            <tbody id="users-tbody"></tbody>
+          </table>
+        </div>
+        <div class="card" style="margin-top:1rem">
+          <div class="card-title">Changer mon mot de passe</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Nouveau mot de passe</label>
+              <input type="password" id="new-pass" placeholder="••••••••">
+            </div>
+            <div class="form-group">
+              <label>Confirmer</label>
+              <input type="password" id="new-pass-confirm" placeholder="••••••••">
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="changePassword()">Mettre à jour</button>
+        </div>
+      </div>
+
+      <!-- ── SCANNER ── -->
+      <div id="page-scan" style="display:none">
+        <div class="card">
+          <div class="card-title">Scanner la bibliothèque</div>
+          <p style="font-size:13px;color:var(--text2);margin-bottom:1rem">
+            Le scanner parcourt les dossiers configurés, extrait les métadonnées de chaque fichier audio
+            (MP3, FLAC, WAV, AIFF, M4A, OGG…) et génère les thumbnails des pochettes.
+          </p>
+          <div style="background:var(--bg3);border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem;font-family:monospace;font-size:12px;color:var(--text2)">
+            📁 Dossier scanné : <span id="scan-dir">/music</span>
+          </div>
+          <div id="scan-status-card" style="margin-bottom:1rem"></div>
+          <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+            <button class="btn btn-primary" id="scan-btn" onclick="startScan()">🔍 Lancer le scan</button>
+            <button class="btn btn-ghost" onclick="checkScanStatus()">↻ Actualiser le statut</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Résumé de la bibliothèque</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;text-align:center">
+            <div>
+              <div style="font-size:28px;font-weight:700;color:var(--accent2)" id="scan-total-songs">—</div>
+              <div style="font-size:12px;color:var(--text2)">Titres</div>
+            </div>
+            <div>
+              <div style="font-size:28px;font-weight:700;color:var(--green)" id="scan-total-albums">—</div>
+              <div style="font-size:12px;color:var(--text2)">Albums</div>
+            </div>
+            <div>
+              <div style="font-size:28px;font-weight:700;color:var(--blue)" id="scan-total-artists">—</div>
+              <div style="font-size:12px;color:var(--text2)">Artistes</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── STATS ── -->
+      <div id="page-stats" style="display:none">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon purple">▶</div>
+            <div><div class="stat-value" id="st-plays">—</div><div class="stat-label">Lectures totales</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon green">🎵</div>
+            <div><div class="stat-value" id="st-unique">—</div><div class="stat-label">Titres uniques</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon blue">⏱</div>
+            <div><div class="stat-value" id="st-time">—</div><div class="stat-label">Minutes d'écoute</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon amber">📅</div>
+            <div><div class="stat-value" id="st-month">—</div><div class="stat-label">Ce mois-ci</div></div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+          <div class="card">
+            <div class="card-title">Top 10 titres (30 jours)</div>
+            <div id="top-tracks-list">
+              <div class="empty-state"><div class="icon">📊</div><p>Pas encore de données</p></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Top artistes (30 jours)</div>
+            <div id="top-artists-list">
+              <div class="empty-state"><div class="icon">🎤</div><p>Pas encore de données</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL : Ajouter utilisateur ── -->
+<div id="modal-add-user" class="modal-overlay" style="display:none" onclick="closeModalOutside(event,'modal-add-user')">
+  <div class="modal">
+    <div class="modal-title">👤 Nouvel utilisateur</div>
+    <div class="form-group">
+      <label>Nom d'utilisateur *</label>
+      <input id="new-user-name" type="text" placeholder="ex: marie">
+    </div>
+    <div class="form-group">
+      <label>Mot de passe *</label>
+      <input id="new-user-pass" type="password" placeholder="Minimum 8 caractères">
+    </div>
+    <div class="form-group">
+      <label>Rôle</label>
+      <select id="new-user-role">
+        <option value="user">Utilisateur standard</option>
+        <option value="admin">Administrateur</option>
+      </select>
+    </div>
+    <div id="add-user-error" style="color:var(--red);font-size:13px;display:none;margin-bottom:.5rem"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-add-user')">Annuler</button>
+      <button class="btn btn-primary" onclick="addUser()">Créer l'utilisateur</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast container ── -->
+<div id="toast-container"></div>
+
+<script>
+// ════════════════════════════════════════════════════
+//  CONFIG
+// ════════════════════════════════════════════════════
+const API = window.location.origin;
+let token = localStorage.getItem('askari_token') || '';
+let currentPage = 'dashboard';
+
+// Lib pagination
+let libPage = 0;
+const PAGE_SIZE = 50;
+let allSongs = [], allAlbums = [], allArtists = [];
+let filteredSongs = [];
+let currentLibTab = 'songs';
+
+// ════════════════════════════════════════════════════
+//  UTILS
+// ════════════════════════════════════════════════════
+async function api(method, path, body) {
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+    ...(body ? { body: JSON.stringify(body) } : {})
+  };
+  const r = await fetch(API + path, opts);
+  if (r.status === 401) { logout(); return null; }
+  return r.ok ? r.json() : null;
+}
+
+function toast(msg, type = 'success') {
+  const t = document.createElement('div');
+  t.className = `toast toast-${type}`;
+  const icons = { success: '✓', error: '✕', info: 'ℹ' };
+  t.innerHTML = `<span>${icons[type]}</span> ${msg}`;
+  document.getElementById('toast-container').appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+function fmtDur(s) {
+  const m = Math.floor(s / 60), sec = s % 60;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('fr-FR',
+    { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function audioFormatBadge(fmt) {
+  const lossless = ['flac','wav','aiff','aif','alac','ape','wv'];
+  const cls = lossless.includes((fmt||'').toLowerCase()) ? 'lossless' : '';
+  return fmt ? `<span class="audio-format ${cls}">${fmt.toUpperCase()}</span>` : '';
+}
+
+// ════════════════════════════════════════════════════
+//  AUTH
+// ════════════════════════════════════════════════════
+async function doLogin() {
+  const username = document.getElementById('login-user').value.trim();
+  const password = document.getElementById('login-pass').value;
+  if (!username || !password) {
+    showLoginError('Remplir tous les champs'); return;
+  }
+  const data = await fetch(API + '/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  }).then(r => r.json()).catch(() => null);
+
+  if (data?.accesstoken) {
+    token = data.accesstoken;
+    localStorage.setItem('askari_token', token);
+    localStorage.setItem('askari_user', data.user?.username || username);
+    document.getElementById('sidebar-user').textContent = data.user?.username || username;
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    initApp();
+  } else {
+    showLoginError('Identifiants incorrects');
+  }
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('login-error');
+  el.textContent = msg; el.style.display = 'block';
+}
+
+function logout() {
+  token = '';
+  localStorage.removeItem('askari_token');
+  localStorage.removeItem('askari_user');
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+}
+
+// Enter key on login
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.getElementById('login-screen').style.display !== 'none') {
+    doLogin();
+  }
+});
+
+// ════════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════════
+async function initApp() {
+  document.getElementById('info-api-url').textContent = API;
+  document.getElementById('docs-link').href = API + '/docs';
+  await loadDashboard();
+  startScanPolling();
+}
+
+async function loadDashboard() {
+  // Songs
+  const songs = await api('GET', '/getall/songs?limit=1000');
+  if (songs?.items) {
+    allSongs = songs.items;
+    document.getElementById('stat-songs').textContent = allSongs.length.toLocaleString('fr');
+    document.getElementById('scan-total-songs').textContent = allSongs.length.toLocaleString('fr');
+    renderRecentSongs(allSongs.slice(0, 8));
+  }
+  // Albums
+  const albums = await api('GET', '/getall/albums?limit=1000');
+  if (albums?.items) {
+    allAlbums = albums.items;
+    document.getElementById('stat-albums').textContent = allAlbums.length.toLocaleString('fr');
+    document.getElementById('scan-total-albums').textContent = allAlbums.length.toLocaleString('fr');
+  }
+  // Artists
+  const artists = await api('GET', '/getall/artists?limit=1000');
+  if (artists?.items) {
+    allArtists = artists.items;
+    document.getElementById('stat-artists').textContent = allArtists.length.toLocaleString('fr');
+    document.getElementById('scan-total-artists').textContent = allArtists.length.toLocaleString('fr');
+  }
+  // Users
+  const users = await api('GET', '/users/list');
+  if (users) {
+    document.getElementById('stat-users').textContent = users.length;
+    renderUsers(users);
+  }
+}
+
+// ════════════════════════════════════════════════════
+//  NAVIGATION
+// ════════════════════════════════════════════════════
+const pageNames = {
+  dashboard: 'Tableau de bord', library: 'Bibliothèque',
+  users: 'Utilisateurs', scan: 'Scanner', stats: 'Statistiques'
+};
+
+function showPage(name) {
+  document.querySelectorAll('[id^="page-"]').forEach(el => el.style.display = 'none');
+  document.getElementById('page-' + name).style.display = '';
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  event?.currentTarget?.classList.add('active');
+  document.getElementById('page-title').textContent = pageNames[name] || name;
+  currentPage = name;
+
+  if (name === 'library') { filteredSongs = allSongs; renderLibrary(); }
+  if (name === 'stats') loadStats();
+  if (name === 'scan') checkScanStatus();
+  if (name === 'users') loadUsers();
+}
+
+// ════════════════════════════════════════════════════
+//  BIBLIOTHÈQUE
+// ════════════════════════════════════════════════════
+function libTab(tab, el) {
+  currentLibTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('lib-songs').style.display = tab === 'songs' ? '' : 'none';
+  document.getElementById('lib-albums').style.display = tab === 'albums' ? '' : 'none';
+  document.getElementById('lib-artists').style.display = tab === 'artists' ? '' : 'none';
+  if (tab === 'albums') renderAlbums();
+  if (tab === 'artists') renderArtistsLib();
+}
+
+function libSearch() {
+  const q = document.getElementById('lib-search').value.toLowerCase();
+  if (!q) { filteredSongs = allSongs; }
+  else {
+    filteredSongs = allSongs.filter(s =>
+      (s.title||'').toLowerCase().includes(q) ||
+      (s.artist||'').toLowerCase().includes(q) ||
+      (s.album||'').toLowerCase().includes(q)
+    );
+  }
+  libPage = 0;
+  renderLibrary();
+}
+
+function renderLibrary() {
+  const start = libPage * PAGE_SIZE;
+  const page = filteredSongs.slice(start, start + PAGE_SIZE);
+  const total = filteredSongs.length;
+  document.getElementById('songs-count').textContent =
+    `${total.toLocaleString('fr')} titre${total !== 1 ? 's' : ''} ${filteredSongs !== allSongs ? '(filtré)' : ''}`;
+
+  const tbody = document.getElementById('songs-tbody');
+  if (!page.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text3)">Aucun résultat</td></tr>`;
+  } else {
+    tbody.innerHTML = page.map((s, i) => `
+      <tr>
+        <td class="td-muted">${start + i + 1}</td>
+        <td><div style="font-weight:500;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.title)}</div></td>
+        <td class="td-muted" style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.artist)}</td>
+        <td class="td-muted" style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.album)}</td>
+        <td class="td-muted">${fmtDur(s.duration||0)}</td>
+        <td>${audioFormatBadge(s.format)}</td>
+        <td class="td-muted">${s.bitrate ? s.bitrate+'kbps' : '—'}</td>
+      </tr>`).join('');
+  }
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  document.getElementById('page-info').textContent = `Page ${libPage+1} / ${totalPages || 1}`;
+  document.getElementById('prev-btn').disabled = libPage === 0;
+  document.getElementById('next-btn').disabled = libPage >= totalPages - 1;
+}
+
+function libPrev() { if (libPage > 0) { libPage--; renderLibrary(); } }
+function libNext() {
+  if ((libPage+1) * PAGE_SIZE < filteredSongs.length) { libPage++; renderLibrary(); }
+}
+
+function renderAlbums() {
+  const q = document.getElementById('lib-search').value.toLowerCase();
+  const list = q ? allAlbums.filter(a =>
+    (a.title||'').toLowerCase().includes(q) || (a.artist||'').toLowerCase().includes(q)
+  ) : allAlbums;
+  document.getElementById('albums-tbody').innerHTML = list.map(a => `
+    <tr>
+      <td><div style="font-weight:500">${esc(a.title)}</div></td>
+      <td class="td-muted">${esc(a.artist)}</td>
+      <td class="td-muted">${a.date||'—'}</td>
+      <td class="td-muted">${a.count||0}</td>
+    </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;padding:2rem;color:var(--text3)">Aucun album</td></tr>';
+}
+
+function renderArtistsLib() {
+  const q = document.getElementById('lib-search').value.toLowerCase();
+  const list = q ? allArtists.filter(a => (a.name||'').toLowerCase().includes(q)) : allArtists;
+  document.getElementById('artists-tbody').innerHTML = list.map(a => `
+    <tr>
+      <td><div style="font-weight:500">${esc(a.name)}</div></td>
+      <td class="td-muted">${a.albumcount||0}</td>
+      <td class="td-muted">${a.trackcount||0}</td>
+    </tr>`).join('') || '<tr><td colspan="3" style="text-align:center;padding:2rem;color:var(--text3)">Aucun artiste</td></tr>';
+}
+
+function renderRecentSongs(songs) {
+  if (!songs.length) {
+    document.getElementById('recent-songs').innerHTML = `<div class="empty-state"><div class="icon">🎵</div><p>Aucune musique indexée — lancez un scan</p></div>`;
+    return;
+  }
+  document.getElementById('recent-songs').innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Titre</th><th>Artiste</th><th>Album</th><th>Durée</th><th>Format</th></tr></thead>
+        <tbody>${songs.map(s => `
+          <tr>
+            <td style="font-weight:500;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.title)}</td>
+            <td class="td-muted">${esc(s.artist)}</td>
+            <td class="td-muted">${esc(s.album)}</td>
+            <td class="td-muted">${fmtDur(s.duration||0)}</td>
+            <td>${audioFormatBadge(s.format)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function exportCSV() {
+  const data = filteredSongs;
+  const rows = [['Titre','Artiste','Album','Durée','Format','Bitrate']];
+  data.forEach(s => rows.push([
+    s.title, s.artist, s.album, fmtDur(s.duration||0), s.format||'', (s.bitrate||'')
+  ]));
+  const csv = rows.map(r => r.map(c => `"${(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = 'askariserver_library.csv'; a.click();
+  toast('Export CSV téléchargé');
+}
+
+// ════════════════════════════════════════════════════
+//  UTILISATEURS
+// ════════════════════════════════════════════════════
+async function loadUsers() {
+  const users = await api('GET', '/users/list');
+  if (users) renderUsers(users);
+}
+
+function renderUsers(users) {
+  const tbody = document.getElementById('users-tbody');
+  if (!tbody) return;
+  const me = localStorage.getItem('askari_user');
+  tbody.innerHTML = users.map(u => `
+    <tr>
+      <td style="padding:.8rem 1rem">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:32px;height:32px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">
+            ${(u.username||'?')[0].toUpperCase()}
+          </div>
+          <div>
+            <div style="font-weight:500">${esc(u.username)}</div>
+            ${u.username === me ? '<div style="font-size:11px;color:var(--text3)">Vous</div>' : ''}
+          </div>
+        </div>
+      </td>
+      <td>
+        <span class="badge ${u.role === 'admin' ? 'badge-purple' : 'badge-blue'}">
+          ${u.role === 'admin' ? '👑 Admin' : '👤 Utilisateur'}
+        </span>
+      </td>
+      <td class="td-muted">${fmtDate(u.last_seen)}</td>
+      <td><span class="badge ${u.is_active ? 'badge-green' : 'badge-red'}">${u.is_active ? 'Actif' : 'Inactif'}</span></td>
+      <td>
+        ${u.username !== me ? `<button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id},'${esc(u.username)}')">Supprimer</button>` : '<span style="color:var(--text3);font-size:12px">—</span>'}
+      </td>
+    </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text3)">Aucun utilisateur</td></tr>';
+}
+
+async function addUser() {
+  const username = document.getElementById('new-user-name').value.trim();
+  const password = document.getElementById('new-user-pass').value;
+  const role     = document.getElementById('new-user-role').value;
+  const errEl = document.getElementById('add-user-error');
+
+  if (!username) { showErr(errEl, 'Nom d\'utilisateur requis'); return; }
+  if (password.length < 6) { showErr(errEl, 'Mot de passe trop court (6 min)'); return; }
+
+  const r = await api('POST', '/users/create', { username, password, role });
+  if (r?.id) {
+    toast(`✓ Utilisateur "${username}" créé`);
+    closeModal('modal-add-user');
+    document.getElementById('new-user-name').value = '';
+    document.getElementById('new-user-pass').value = '';
+    loadUsers();
+    const users = await api('GET', '/users/list');
+    if (users) document.getElementById('stat-users').textContent = users.length;
+  } else {
+    showErr(errEl, 'Erreur — nom déjà pris ou droits insuffisants');
+  }
+}
+
+async function deleteUser(id, name) {
+  if (!confirm(`Supprimer l'utilisateur "${name}" ?`)) return;
+  const r = await api('DELETE', `/users/${id}`);
+  if (r?.ok) {
+    toast(`Utilisateur "${name}" supprimé`, 'info');
+    loadUsers();
+  } else {
+    toast('Impossible de supprimer cet utilisateur', 'error');
+  }
+}
+
+async function changePassword() {
+  const p1 = document.getElementById('new-pass').value;
+  const p2 = document.getElementById('new-pass-confirm').value;
+  if (!p1) { toast('Mot de passe requis', 'error'); return; }
+  if (p1 !== p2) { toast('Les mots de passe ne correspondent pas', 'error'); return; }
+  if (p1.length < 6) { toast('Mot de passe trop court (6 min)', 'error'); return; }
+  toast('Fonctionnalité à venir (Phase 2)', 'info');
+}
+
+// ════════════════════════════════════════════════════
+//  SCANNER
+// ════════════════════════════════════════════════════
+async function startScan() {
+  const r = await api('POST', '/scan/start');
+  if (r) {
+    toast(r.status === 'already_running' ? 'Scan déjà en cours' : '🔍 Scan démarré !', 'info');
+    checkScanStatus();
+  }
+}
+
+async function checkScanStatus() {
+  const r = await api('GET', '/scan/status');
+  if (!r) return;
+  const banner = document.getElementById('scan-banner');
+  const statusCard = document.getElementById('scan-status-card');
+
+  if (r.scanning) {
+    const pct = r.total > 0 ? Math.round(r.done / r.total * 100) : 0;
+    banner.classList.add('active');
+    document.getElementById('scan-current').textContent = r.current || '...';
+    document.getElementById('scan-count').textContent = `${r.done} / ${r.total}`;
+    document.getElementById('scan-progress').style.width = pct + '%';
+    if (statusCard) statusCard.innerHTML = `
+      <div style="background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.3);border-radius:8px;padding:.75rem 1rem">
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:.5rem">
+          <span>🔍 En cours : <strong>${esc(r.current||'...')}</strong></span>
+          <span style="color:var(--accent2)">${pct}%</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+        <div style="font-size:12px;color:var(--text3);margin-top:.4rem">${r.done} / ${r.total} fichiers</div>
+      </div>`;
+  } else {
+    banner.classList.remove('active');
+    if (statusCard) statusCard.innerHTML = `
+      <div style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:8px;padding:.75rem 1rem;font-size:13px;color:var(--green)">
+        ✓ Prêt — Aucun scan en cours
+      </div>`;
+    await loadDashboard();
+  }
+}
+
+function startScanPolling() {
+  setInterval(async () => {
+    const r = await api('GET', '/scan/status');
+    if (r?.scanning) checkScanStatus();
+    else document.getElementById('scan-banner').classList.remove('active');
+  }, 5000);
+}
+
+// ════════════════════════════════════════════════════
+//  STATS
+// ════════════════════════════════════════════════════
+async function loadStats() {
+  const ov = await api('GET', '/stats/overview');
+  if (ov) {
+    document.getElementById('st-plays').textContent = ov.total_plays?.toLocaleString('fr') || '0';
+    document.getElementById('st-unique').textContent = ov.unique_songs?.toLocaleString('fr') || '0';
+    document.getElementById('st-time').textContent = ov.total_minutes?.toLocaleString('fr') || '0';
+    document.getElementById('st-month').textContent = ov.this_month?.toLocaleString('fr') || '0';
+  }
+  const tracks = await api('GET', '/stats/top-tracks?limit=10&days=30');
+  const tl = document.getElementById('top-tracks-list');
+  if (tracks?.length) {
+    tl.innerHTML = tracks.map((t,i) => `
+      <div style="display:flex;align-items:center;gap:10px;padding:.5rem 0;border-bottom:1px solid var(--border)">
+        <div style="width:20px;text-align:center;font-size:13px;font-weight:700;color:${i<3?'var(--accent2)':'var(--text3)'}">${i+1}</div>
+        <div style="flex:1;overflow:hidden">
+          <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.song?.title||'')}</div>
+          <div style="font-size:12px;color:var(--text2)">${esc(t.song?.artist||'')}</div>
+        </div>
+        <div style="font-size:12px;color:var(--text3);flex-shrink:0">${t.plays}×</div>
+      </div>`).join('');
+  } else {
+    tl.innerHTML = '<div class="empty-state"><div class="icon">📊</div><p>Pas encore de données d\'écoute</p></div>';
+  }
+  const artists = await api('GET', '/stats/top-artists?limit=10&days=30');
+  const al = document.getElementById('top-artists-list');
+  if (artists?.length) {
+    const max = artists[0]?.plays || 1;
+    al.innerHTML = artists.map((a,i) => `
+      <div style="padding:.5rem 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+          <span style="font-weight:${i<3?'600':'400'}">${esc(a.artist)}</span>
+          <span style="color:var(--text3)">${a.plays} écoute${a.plays>1?'s':''}</span>
+        </div>
+        <div class="progress-bar" style="height:4px">
+          <div class="progress-fill" style="width:${Math.round(a.plays/max*100)}%"></div>
+        </div>
+      </div>`).join('');
+  } else {
+    al.innerHTML = '<div class="empty-state"><div class="icon">🎤</div><p>Pas encore de données</p></div>';
+  }
+}
+
+// ════════════════════════════════════════════════════
+//  MODALS
+// ════════════════════════════════════════════════════
+function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+function closeModalOutside(e, id) { if (e.target.id === id) closeModal(id); }
+
+function showErr(el, msg) { el.textContent = msg; el.style.display = 'block'; }
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ════════════════════════════════════════════════════
+//  AUTO LOGIN si token existant
+// ════════════════════════════════════════════════════
+(async () => {
+  if (token) {
+    const user = await fetch(API + '/auth/user', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    }).then(r => r.ok ? r.json() : null).catch(() => null);
+    if (user) {
+      document.getElementById('sidebar-user').textContent = user.username || localStorage.getItem('askari_user') || 'admin';
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app').style.display = 'flex';
+      initApp();
+      return;
+    }
+  }
+})();
+</script>
+</body>
+</html>

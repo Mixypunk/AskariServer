@@ -1,0 +1,52 @@
+services:
+  askariserver:
+    image: ghcr.io/mixypunk/askariserver:latest
+    restart: unless-stopped
+
+    ports:
+      - "7777:7777"
+
+    volumes:
+      - /mnt/NAS/Media/Music:/music:ro
+      - /mnt/Apps/askariserver:/data
+
+    environment:
+      # ── Sécurité (OBLIGATOIRE) ──────────────────────────────────────────
+      # Générez une vraie clé : openssl rand -hex 32
+      SECRET_KEY: "CHANGEZ-MOI-openssl-rand-hex-32"
+
+      # ── CORS — votre domaine (ex: "https://askaria.duckdns.org") ────────
+      ALLOWED_ORIGINS: ""
+
+      # ── Base de données PostgreSQL TrueNAS ──────────────────────────────
+      # Remplacez 192.168.X.X par l'IP de votre TrueNAS
+      # et MOT_DE_PASSE par le mot de passe configuré dans l'app PostgreSQL
+      DATABASE_URL: "postgresql+asyncpg://askaria:%40Askaria_%282026%29%40@192.168.1.16:5432/askaria"
+
+      # ── Serveur ─────────────────────────────────────────────────────────
+      PORT: "7777"
+      HOST: "0.0.0.0"
+      MUSIC_DIRS: "/music"
+      AUTO_SCAN_ON_START: "true"
+      SCAN_INTERVAL_HOURS: "24"
+      CACHE_DIR: "/data/cache"
+
+      # ── Audio ────────────────────────────────────────────────────────────
+      TRANSCODING_ENABLED: "true"
+      FFMPEG_PATH: "ffmpeg"
+
+      # ── Réseau ───────────────────────────────────────────────────────────
+      TRUST_PROXY_HEADERS: "true"
+
+      # ── Utilisateurs ─────────────────────────────────────────────────────
+      ALLOW_REGISTRATION: "false"
+      MAX_USERS: "10"
+
+      # ── Paroles ──────────────────────────────────────────────────────────
+      LYRICS_ON_SCAN: "true"
+
+      # ── Last.fm (optionnel) ───────────────────────────────────────────────
+      LASTFM_API_KEY: ""
+      LASTFM_API_SECRET: ""
+      LASTFM_USERNAME: ""
+      LASTFM_PASSWORD_HASH: ""
