@@ -1171,8 +1171,16 @@ function updIco(p) {
 }
 function next() {
   if (!Q.length) return;
+  _endedGuard = false;
   if (rep === 'one') { aud.currentTime = 0; aud.play(); return; }
-  if (shuf) Qi = Math.floor(Math.random() * Q.length); else Qi = (Qi + 1) % Q.length;
+  if (shuf) {
+    // Shuffle : choisir un titre différent du courant si possible
+    let ni = Qi;
+    if (Q.length > 1) while (ni === Qi) ni = Math.floor(Math.random() * Q.length);
+    Qi = ni;
+  } else {
+    Qi = (Qi + 1) % Q.length;
+  }
   loadTrack(Q[Qi]); aud.play(); updIco(true);
 }
 function prev() {
@@ -1198,6 +1206,8 @@ function seek(e) {
   aud.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * aud.duration;
 }
 
+// Sécurité anti-arrêt prématuré : déclenché avant que 'ended' soit fiable
+let _endedGuard = false;
 aud.addEventListener('timeupdate', () => {
   if (!aud.duration) return;
   const p = (aud.currentTime / aud.duration) * 100;
@@ -1205,13 +1215,22 @@ aud.addEventListener('timeupdate', () => {
   document.getElementById('pct').textContent = fmt(aud.currentTime);
   document.getElementById('pdt').textContent = fmt(aud.duration);
   if (lyData?.synced && lyOpen) updLyScroll();
+  // Filet de sécurité : si on est à 0.3s de la fin et que la lecture continue
+  // (certains formats FLAC/OPUS ne déclenchent pas 'ended' correctement)
+  if (!_endedGuard && aud.duration > 1 && aud.currentTime >= aud.duration - 0.3) {
+    _endedGuard = true;
+    _onTrackEnd();
+  }
 });
-aud.addEventListener('ended', () => {
+function _onTrackEnd() {
   if (rep === 'one') { aud.currentTime = 0; aud.play(); }
-  else if (rep === 'all' || Qi < Q.length - 1 || shuf) next();
+  else if (rep === 'all' || shuf || Qi < Q.length - 1) next();
   else updIco(false);
+}
+aud.addEventListener('ended', () => {
+  if (!_endedGuard) _onTrackEnd();
 });
-aud.addEventListener('play', () => updIco(true));
+aud.addEventListener('play', () => { _endedGuard = false; updIco(true); });
 aud.addEventListener('pause', () => updIco(false));
 aud.addEventListener('error', () => { toast('Erreur de lecture'); updIco(false); });
 
