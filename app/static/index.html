@@ -372,7 +372,10 @@ textarea.minp{resize:none;}select.minp{cursor:pointer;}
     <div class="ni" id="ni-songs" onclick="go('songs')"><svg fill="currentColor" viewBox="0 0 20 20"><path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z"/></svg>Titres</div>
     <div class="ni" id="ni-albums" onclick="go('albums')"><svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/></svg>Albums</div>
     <div class="ni" id="ni-artists" onclick="go('artists')"><svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>Artistes</div>
+    <div class="ni" id="ni-genres" onclick="go('genres')"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Genres</div>
+    <div class="ni" id="ni-decades" onclick="go('decades')"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Décennies</div>
     <div class="ni" id="ni-favs" onclick="go('favs')"><svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>Favoris</div>
+    <div class="ni" id="ni-pubpls" onclick="go('pubpls')"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 21a9 9 0 100-18 9 9 0 000 18z"/><path d="M12 3v18"/><path d="M3 12h18"/><path d="M12 3c-2.5 0-4.5 4-4.5 9s2 9 4.5 9 4.5-4 4.5-9-2-9-4.5-9z"/></svg>Discouverte</div>
   </div>
   <div class="ndiv"></div>
   <div class="sb-plh">
@@ -423,6 +426,16 @@ textarea.minp{resize:none;}select.minp{cursor:pointer;}
     <div class="ph"><h1>Artistes</h1></div>
     <div class="grid" id="artgrid"></div>
   </div>
+  <!-- GENRES -->
+  <div class="page" id="p-genres">
+    <div class="ph"><h1>Genres</h1></div>
+    <div class="grid" id="genregrid"></div>
+  </div>
+  <!-- DECADES -->
+  <div class="page" id="p-decades">
+    <div class="ph"><h1>Décennies</h1></div>
+    <div class="grid" id="decadegrid"></div>
+  </div>
   <!-- ARTIST DETAIL -->
   <div class="page" id="p-artd">
     <button class="backbtn" onclick="back()"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>Retour</button>
@@ -443,6 +456,11 @@ textarea.minp{resize:none;}select.minp{cursor:pointer;}
   <div class="page" id="p-pls">
     <div class="ph"><h1>Playlists</h1></div>
     <div class="grid" id="plgrid"></div>
+  </div>
+  <!-- PUBLIC PLAYLISTS -->
+  <div class="page" id="p-pubpls">
+    <div class="ph"><h1>Playlists de la communauté</h1></div>
+    <div class="grid" id="pubplgrid"></div>
   </div>
   <!-- PLAYLIST DETAIL -->
   <div class="page" id="p-pld">
@@ -588,6 +606,10 @@ textarea.minp{resize:none;}select.minp{cursor:pointer;}
     <div class="mtit" id="plmtit">Nouvelle playlist</div>
     <input type="text" class="minp" id="plname" placeholder="Nom de la playlist">
     <textarea class="minp" id="pldesc" placeholder="Description (optionnel)" rows="3"></textarea>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--t2);margin-bottom:14px;cursor:pointer;">
+      <input type="checkbox" id="plpub" style="accent-color:var(--ac);width:16px;height:16px;">
+      Rendre cette playlist publique
+    </label>
     <div class="macts"><button class="mbtn s" onclick="closePlM()">Annuler</button><button class="mbtn p" id="plmok" onclick="confirmPlM()">Créer</button></div>
   </div>
 </div>
@@ -709,7 +731,7 @@ function go(name, push = true) {
   document.getElementById('ni-' + name)?.classList.add('on');
   if (push) hist.push(name);
   document.getElementById('cnt').scrollTop = 0;
-  const fn = { songs: renderSongs, albums: renderAlbums, artists: renderArtists, favs: renderFavs, pls: renderPls, admin: loadAdmin, profile: loadProfile, recent: loadRecentlyPlayed };
+  const fn = { songs: renderSongs, albums: renderAlbums, artists: renderArtists, favs: renderFavs, pls: renderPls, admin: loadAdmin, profile: loadProfile, recent: loadRecentlyPlayed, pubpls: renderPubPls, genres: renderGenres, decades: renderDecades };
   fn[name]?.();
   if (name === 'search') setTimeout(() => document.getElementById('sinp')?.focus(), 80);
 }
@@ -829,6 +851,45 @@ async function showArt(h) {
   document.getElementById('art-t').innerHTML = tracks.length ? tracks.map((s, i) => trow(s, i, qid)).join('') : '<div class="empty"><p>Aucun titre</p></div>';
 }
 
+// ── GENRES & DECADES ───────────────────────────────────────────────
+async function renderGenres() {
+  document.getElementById('genregrid').innerHTML = '<div class="empty"><p>Chargement…</p></div>';
+  const d = await api('/genres');
+  if (!d || !d.genres?.length) { document.getElementById('genregrid').innerHTML = '<div class="empty"><p>Aucun genre</p></div>'; return; }
+  document.getElementById('genregrid').innerHTML = d.genres.map(g => `<div class="card round" onclick="showGenre('${g.name}')">
+    <div class="cart" style="border-radius:12px;background:var(--bg4);align-items:center;justify-content:center;">
+       <h2 style="margin:0;color:var(--t1)">${esc(g.name)}</h2>
+    </div>
+    <div class="ct" style="text-align:center">${esc(g.name)}</div>
+    <div class="cs" style="text-align:center">${g.count} titres</div>
+  </div>`).join('');
+}
+async function showGenre(name) {
+  toast('Chargement du genre...');
+  const res = await api(`/genres/${encodeURIComponent(name)}/tracks?limit=200`);
+  if (!res?.tracks?.length) return;
+  Q = res.tracks; Qi = 0; loadTrack(Q[Qi]); aud.play(); updIco(true);
+  toast(`Lecture du genre : ${name}`);
+}
+async function renderDecades() {
+  document.getElementById('decadegrid').innerHTML = '<div class="empty"><p>Chargement…</p></div>';
+  const d = await api('/decades');
+  if (!d || !d.decades?.length) { document.getElementById('decadegrid').innerHTML = '<div class="empty"><p>Aucune décennie</p></div>'; return; }
+  document.getElementById('decadegrid').innerHTML = d.decades.map(g => `<div class="card round" onclick="showDecade('${g.year}')">
+    <div class="cart" style="border-radius:12px;background:var(--bg4);align-items:center;justify-content:center;">
+       <h1 style="margin:0;color:var(--ac);font-size:24px">${g.label}</h1>
+    </div>
+    <div class="cs" style="text-align:center">${g.count} titres</div>
+  </div>`).join('');
+}
+async function showDecade(year) {
+  toast('Chargement de la décennie...');
+  const res = await api(`/decades/${year}/tracks?limit=200`);
+  if (!res?.tracks?.length) return;
+  Q = res.tracks; Qi = 0; loadTrack(Q[Qi]); aud.play(); updIco(true);
+  toast(`Lecture des années ${year}`);
+}
+
 // ── FAVS ───────────────────────────────────────────────────────────
 async function renderFavs() {
   const d = await api('/favourites'); const t = d?.tracks || [];
@@ -869,6 +930,21 @@ function renderPls() {
       </div>`).join('')
     : '<div class="empty"><p>Aucune playlist</p></div>';
 }
+async function renderPubPls() {
+  document.getElementById('pubplgrid').innerHTML = '<div class="empty"><p>Chargement…</p></div>';
+  const res = await api('/playlists/public');
+  const items = res?.data || [];
+  document.getElementById('pubplgrid').innerHTML = items.length
+    ? items.map(p => `<div class="card" onclick="showPl('${p.id}')">
+        <div class="cart" style="background:var(--bg4);align-items:center;justify-content:center;">
+          <svg width="36" height="36" fill="var(--ac)" viewBox="0 0 20 20"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"/></svg>
+          <div class="cpov"><svg width="13" height="13" fill="white" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg></div>
+        </div>
+        <div class="ct ell">${esc(p.name)}</div>
+        <div class="cs">${p.trackcount || p.count || 0} titres</div>
+      </div>`).join('')
+    : '<div class="empty"><p>Aucune playlist publique</p></div>';
+}
 function renderSbPls() {
   document.getElementById('sbpls').innerHTML = pls.slice(0, 20).map(p => `
     <div class="sb-pl" onclick="showPl('${p.id}')">
@@ -893,12 +969,13 @@ async function showPl(id) {
       <div class="di-s">${tracks.length} titre${tracks.length !== 1 ? 's' : ''}${pl?.description ? ' · ' + esc(pl.description) : ''}</div>
       <div class="di-acts">
         <button class="bplay" onclick="playFromQ('${qid}',0)"><svg width="13" height="13" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg>Lecture</button>
-        <button class="bout" onclick="openEditPl('${id}','${esc(pl?.name||'')}','${esc(pl?.description||'')}')"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Modifier</button>
+        <button class="bout" onclick="openEditPl('${id}','${esc(pl?.name||'')}','${esc(pl?.description||'')}', ${pl?.is_public===true})"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Modifier</button>
         <button class="bout" onclick="openApl('${qid}')"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>+ Playlist</button>
         <button class="bout bdanger" onclick="delPl('${id}')"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>Supprimer</button>
       </div>
     </div>`;
   document.getElementById('pl-t').innerHTML = tracks.length ? tracks.map((s, i) => trow(s, i, qid)).join('') : '<div class="empty"><p>Playlist vide</p></div>';
+  if (tracks.length && pl?.owner_id) makeDraggable(document.getElementById('pl-t'), id);
 }
 
 // Playlist CRUD
@@ -907,14 +984,16 @@ function openNewPl() {
   document.getElementById('plmtit').textContent = 'Nouvelle playlist';
   document.getElementById('plmok').textContent = 'Créer';
   document.getElementById('plname').value = ''; document.getElementById('pldesc').value = '';
+  document.getElementById('plpub').checked = false;
   document.getElementById('plm').classList.add('on');
   setTimeout(() => document.getElementById('plname').focus(), 60);
 }
-function openEditPl(id, name, desc) {
+function openEditPl(id, name, desc, pub) {
   plmode = 'edit'; plid = id;
   document.getElementById('plmtit').textContent = 'Modifier la playlist';
   document.getElementById('plmok').textContent = 'Enregistrer';
   document.getElementById('plname').value = name; document.getElementById('pldesc').value = desc;
+  document.getElementById('plpub').checked = !!pub;
   document.getElementById('plm').classList.add('on');
   setTimeout(() => document.getElementById('plname').focus(), 60);
 }
@@ -922,14 +1001,16 @@ function closePlM() { document.getElementById('plm').classList.remove('on'); }
 async function confirmPlM() {
   const n = document.getElementById('plname').value.trim();
   const d = document.getElementById('pldesc').value.trim();
+  const p = document.getElementById('plpub').checked;
   if (!n) return;
   if (plmode === 'new') {
-    const r = await post('/playlists/new', { name: n, description: d });
+    const r = await post('/playlists/new', { name: n, description: d, is_public: p });
     if (r?.playlist) { pls.unshift(r.playlist); renderSbPls(); toast('Playlist créée !'); }
   } else {
-    await post(`/playlists/${plid}/update`, { name: n, description: d });
-    const i = pls.findIndex(p => p.id == plid);
-    if (i >= 0) { pls[i].name = n; pls[i].description = d; }
+    await post(`/playlists/${plid}/update`, { name: n, description: d, is_public: p });
+    const i = pls.findIndex(pl => pl.id == plid);
+    if (i >= 0) { pls[i].name = n; pls[i].description = d; pls[i].is_public = p; }
+    if (document.getElementById('p-pld').classList.contains('on')) showPl(plid); // Refresh PL View
     renderSbPls(); toast('Mise à jour !');
   }
   closePlM();
@@ -1004,6 +1085,9 @@ function showCtx(e, h, title) {
     <div class="ci" onclick="qNext('${h}');closeCtx()">
       <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Écouter ensuite
     </div>
+    <div class="ci" onclick="startRadio('${h}');closeCtx()">
+      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v20M17 5v14M22 8v8M7 5v14M2 8v8"/></svg>Lancer la radio
+    </div>
     <div class="ci" onclick="openApl(null,'${h}');closeCtx()">
       <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22"/></svg>Ajouter à une playlist
     </div>
@@ -1024,6 +1108,17 @@ function qNext(h) {
 async function togFavCtx(h) {
   await post('/track/favourite', { trackhash: h });
   if (favs.has(h)) favs.delete(h); else favs.add(h);
+}
+async function startRadio(h) {
+  toast('Lancement de la radio…');
+  const res = await api(`/radio/${h}`);
+  if (!res || !res.tracks || !res.tracks.length) { toast('Radio indisponible'); return; }
+  Q = res.tracks;
+  Qi = 0;
+  loadTrack(Q[Qi]);
+  aud.play();
+  updIco(true);
+  toast('Radio démarrée !');
 }
 
 // ── PLAYER ─────────────────────────────────────────────────────────
@@ -1239,6 +1334,8 @@ document.addEventListener('keydown', e => {
   }
   if (e.code === 'ArrowUp')   { e.preventDefault(); if (aud) { aud.volume = Math.min(1, aud.volume + 0.1); updVol(); } }
   if (e.code === 'ArrowDown') { e.preventDefault(); if (aud) { aud.volume = Math.max(0, aud.volume - 0.1); updVol(); } }
+  if (e.code === 'NumpadAdd' || e.code === 'Equal') { e.preventDefault(); if (aud) { aud.volume = Math.min(1, aud.volume + 0.1); updVol(); } }
+  if (e.code === 'NumpadSubtract' || e.code === 'Minus') { e.preventDefault(); if (aud) { aud.volume = Math.max(0, aud.volume - 0.1); updVol(); } }
   if (e.code === 'KeyM') { if (aud) { aud.muted = !aud.muted; updVol(); } }
   if (e.code === 'KeyF' && !e.ctrlKey && !e.metaKey) { togFavCur(); }
   if (e.code === 'KeyL') openLyrics();

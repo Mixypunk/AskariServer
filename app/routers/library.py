@@ -402,10 +402,12 @@ playlists_router = APIRouter()
 class PlaylistCreate(BaseModel):
     name: str
     description: str = ""
+    is_public: bool = False
 
 class PlaylistUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    is_public: Optional[bool] = None
 
 class TracksAdd(BaseModel):
     trackhashes: List[str]
@@ -431,6 +433,7 @@ def playlist_to_dict(p: Playlist, track_count: int = None) -> dict:
         "count":       count,
         "trackcount":  count,
         "extra":       {"description": p.description or ""},
+        "is_public":   p.is_public if hasattr(p, 'is_public') else False,
         "image":       None,
     }
 
@@ -445,6 +448,23 @@ async def get_playlists(
         .options(selectinload(Playlist.entries))
         .where(Playlist.owner_id == user.id)
         .order_by(Playlist.updated_at.desc())
+    )
+    playlists = result.scalars().all()
+    return {"data": [playlist_to_dict(p, track_count=len(p.entries) if p.entries else 0) for p in playlists]}
+
+
+@playlists_router.get("/playlists/public")
+async def get_public_playlists(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Playlist)
+        .options(selectinload(Playlist.entries))
+        .where(Playlist.is_public == True)
+        .where(Playlist.owner_id != user.id)
+        .order_by(Playlist.updated_at.desc())
+        .limit(50)
     )
     playlists = result.scalars().all()
     return {"data": [playlist_to_dict(p, track_count=len(p.entries) if p.entries else 0) for p in playlists]}
@@ -481,7 +501,7 @@ async def create_playlist(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    playlist = Playlist(name=body.name, description=body.description, owner_id=user.id)
+    playlist = Playlist(name=body.name, description=body.description, is_public=body.is_public, owner_id=user.id)
     db.add(playlist)
     await db.commit()
     await db.refresh(playlist)
@@ -501,6 +521,7 @@ async def update_playlist(
         raise HTTPException(404, "Playlist introuvable")
     if body.name is not None:        playlist.name        = body.name
     if body.description is not None: playlist.description = body.description
+    if body.is_public is not None:   playlist.is_public   = body.is_public
     playlist.updated_at = datetime.utcnow()
     await db.commit()
     return {"ok": True}
