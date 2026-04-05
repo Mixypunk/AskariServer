@@ -510,6 +510,11 @@ textarea.minp{resize:none;}select.minp{cursor:pointer;}
         <div class="lf" style="margin:0;align-items:flex-start"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="margin-top:3px"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg><textarea id="pf-bio" rows="2" placeholder="Bio courte..." maxlength="300" style="background:none;border:none;color:var(--t1);font-size:14px;width:100%;outline:none;resize:none;font-family:var(--ff)"></textarea></div>
         <button class="lbtn" style="margin-top:4px;padding:10px" onclick="saveProfile()">Enregistrer</button>
       </div>
+      <!-- Heatmap -->
+      <div style="background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r);padding:24px;display:flex;flex-direction:column;grid-column:1/-1">
+        <div style="font-size:11px;color:var(--t3);font-weight:600;text-transform:uppercase;letter-spacing:.1em;margin-bottom:14px">Activité d'écoute</div>
+        <div id="prof-heatmap" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+      </div>
       <!-- Mot de passe -->
       <div style="background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r);padding:24px;display:flex;flex-direction:column;gap:10px;grid-column:1/-1">
         <div style="font-size:11px;color:var(--t3);font-weight:600;text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Changer le mot de passe</div>
@@ -1277,7 +1282,13 @@ async function doScan(inc) {
     const d = await api('/scan/status'); if (!d) return;
     if (d.scanning) {
       const p = d.progress;
-      document.getElementById('scanst').textContent = `${p.done}/${p.total}${p.current ? ' — ' + p.current : ''}${p.lyrics ? ' · ' + p.lyrics + ' paroles' : ''}`;
+      let pct = 0; if (p.total > 0) pct = Math.round((p.done / p.total) * 100);
+      document.getElementById('scanst').innerHTML = `
+        <div style="margin-bottom:6px">${p.done} / ${p.total} ${p.current ? '— ' + esc(p.current) : ''} <b>${pct}%</b></div>
+        <div style="width:100%;max-width:500px;height:6px;background:var(--bg4);border-radius:3px;overflow:hidden">
+          <div style="height:100%;background:var(--ac);width:${pct}%;transition:width .2s"></div>
+        </div>
+      `;
     } else {
       document.getElementById('scanst').textContent = '✓ Scan terminé'; clearInterval(scanPoll); await loadLib();
     }
@@ -1372,6 +1383,38 @@ async function loadProfile() {
   document.getElementById('prof-joined').textContent = d.created_at
     ? 'Membre depuis ' + new Date(d.created_at).toLocaleDateString('fr-FR', {month:'long', year:'numeric'})
     : '';
+  loadHeatmap();
+}
+
+async function loadHeatmap() {
+  const d = await api('/stats/heatmap');
+  const hm = document.getElementById('prof-heatmap');
+  if (!d || !hm) return;
+  
+  let html = '';
+  let max = 1;
+  for (const k in d) if(d[k] > max) max = d[k];
+
+  const today = new Date();
+  for (let i = 89; i >= 0; i--) {
+    const dt = new Date(today);
+    dt.setDate(today.getDate() - i);
+    const yyyy = dt.getFullYear();
+    const mm = String(dt.getMonth() + 1).padStart(2, '0');
+    const dd = String(dt.getDate()).padStart(2, '0');
+    const dstr = `${yyyy}-${mm}-${dd}`;
+    
+    const count = d[dstr] || 0;
+    let op = 0.1;
+    let tooltip = `${dstr}`;
+    if (count > 0) {
+      op = 0.3 + (count/max)*0.7;
+      tooltip += ` : ${count} titres`;
+    }
+    
+    html += `<div title="${tooltip}" style="width:14px;height:14px;border-radius:3px;background:var(--ac);opacity:${op}"></div>`;
+  }
+  hm.innerHTML = html;
 }
 
 async function saveProfile() {
