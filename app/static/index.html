@@ -1234,6 +1234,17 @@ aud.addEventListener('play', () => { _endedGuard = false; updIco(true); });
 aud.addEventListener('pause', () => updIco(false));
 aud.addEventListener('error', () => { toast('Erreur de lecture'); updIco(false); });
 
+// Correction HTML5 : certains VBR Mp3 ont une durée estimée supérieure au fichier brut.
+// Le lecteur gèle avant la fin car il cherche une donnée inexistante et ne déclenche jamais "ended".
+function _checkStallEnd() {
+  if (aud.duration && aud.duration - aud.currentTime < 6 && !_endedGuard) {
+    _endedGuard = true;
+    _onTrackEnd();
+  }
+}
+aud.addEventListener('stalled', _checkStallEnd);
+aud.addEventListener('waiting', _checkStallEnd);
+
 // ── LYRICS ─────────────────────────────────────────────────────────
 async function loadLy(h, fp) {
   const d = await post('/lyrics', { trackhash: h, filepath: fp || '' });
