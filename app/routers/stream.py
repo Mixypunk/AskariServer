@@ -169,7 +169,7 @@ async def _stream_transcoded(request: Request, song: Song, preset: dict) -> Stre
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
         )
         try:
             while True:
