@@ -35,6 +35,13 @@ def _cache_invalidate(*prefixes: str):
         del _cache[k]
 
 
+# ── Cache hash artiste → id (full table scan évité) ─────────────────────
+_artist_hash_cache: dict = {}   # { artist_hash: artist_id }
+
+def _invalidate_artist_cache():
+    _artist_hash_cache.clear()
+
+
 # ── SONGS ──────────────────────────────────────────────────────────────────────
 songs_router = APIRouter()
 
@@ -287,11 +294,19 @@ async def get_artists(
 
 
 async def _find_artist_by_hash(db, artist_hash: str):
-    """Trouve un artiste par son hash xxhash — charge uniquement les noms."""
-    result = await db.execute(select(Artist.id, Artist.name))
-    for row in result.all():
-        if make_artist_hash(row.name) == artist_hash:
-            return await db.get(Artist, row.id)
+    """Trouve un artiste par son hash xxhash — utilise un cache mémoire pour éviter le full scan."""
+    # Cas 1 : hash en cache → direct
+    if artist_hash in _artist_hash_cache:
+        return await db.get(Artist, _artist_hash_cache[artist_hash])
+
+    # Cas 2 : construire le cache depuis la DB (une seule fois)
+    if not _artist_hash_cache:
+        result = await db.execute(select(Artist.id, Artist.name))
+        for row in result.all():
+            _artist_hash_cache[make_artist_hash(row.name)] = row.id
+        if artist_hash in _artist_hash_cache:
+            return await db.get(Artist, _artist_hash_cache[artist_hash])
+
     return None
 
 

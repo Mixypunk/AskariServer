@@ -282,8 +282,9 @@ class LibraryScanner:
                 logger.info(f"Nettoyage : {removed} fichiers manquants retires de la DB")
 
             # Invalider le cache apres scan
-            from .routers.library import _cache_invalidate
+            from .routers.library import _cache_invalidate, _invalidate_artist_cache
             _cache_invalidate("songs", "albums", "artists", "stats")
+            _invalidate_artist_cache()  # Invalidate le cache hash→id des artistes
 
         except Exception as e:
             logger.error(f"Erreur scan: {e}")

@@ -129,7 +129,7 @@ async def _stream_file(request: Request, filepath: str) -> Response:
                 "Content-Range": f"bytes {start}-{end}/{file_size}",
                 "Accept-Ranges": "bytes",
                 "Content-Length": str(length),
-                "Cache-Control": "no-cache",
+                "Cache-Control": "public, max-age=3600",
             },
         )
     else:
@@ -144,7 +144,7 @@ async def _stream_file(request: Request, filepath: str) -> Response:
             headers={
                 "Accept-Ranges": "bytes",
                 "Content-Length": str(file_size),
-                "Cache-Control": "no-cache",
+                "Cache-Control": "public, max-age=3600",
             },
         )
 
