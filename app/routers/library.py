@@ -596,15 +596,32 @@ async def remove_track(
     song = song_r.scalar_one_or_none()
     if not song:
         raise HTTPException(404, "Titre introuvable")
+    
+    result = await db.execute(
+        select(PlaylistEntry)
+        .where(PlaylistEntry.playlist_id == playlist_id)
+        .order_by(PlaylistEntry.position)
+    )
+    entries = result.scalars().all()
+    
+    if body.index < len(entries):
+        entry = entries[body.index]
+        if entry.song_id == song.id:
+            await db.delete(entry)
+            playlist.updated_at = datetime.utcnow()
+            await db.commit()
+            return {"ok": True}
+            
+    # Fallback si l'index fourni ne correspond pas à l'ordre exact
     entry_r = await db.execute(
         select(PlaylistEntry)
         .where(PlaylistEntry.playlist_id == playlist_id)
         .where(PlaylistEntry.song_id == song.id)
-        .where(PlaylistEntry.position == body.index)
     )
-    entry = entry_r.scalar_one_or_none()
-    if entry:
-        await db.delete(entry)
+    all_entries = entry_r.scalars().all()
+    if all_entries:
+        await db.delete(all_entries[0])
+        playlist.updated_at = datetime.utcnow()
         await db.commit()
     return {"ok": True}
 
@@ -627,6 +644,7 @@ async def reorder_playlist(
         entries.insert(body.new_index, entry)
         for i, e in enumerate(entries):
             e.position = i
+        playlist.updated_at = datetime.utcnow()
         await db.commit()
     return {"ok": True}
 
