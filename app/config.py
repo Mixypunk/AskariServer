@@ -43,6 +43,12 @@ class Settings(BaseSettings):
 
     ALLOW_REGISTRATION: bool = False
     MAX_USERS: int = 10
+
+    # Authentification par email uniquement
+    # False (defaut) = accepte username OU email
+    # True           = accepte UNIQUEMENT l'email (activer apres migration BDD 003)
+    REQUIRE_EMAIL_LOGIN: bool = False
+
     TRUST_PROXY_HEADERS: bool = True
 
     # Rate limiting login (tentatives / fenetre secondes)

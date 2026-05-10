@@ -39,7 +39,7 @@ def _check_rate_limit(ip: str) -> None:
 
 # ── Schemas ────────────────────────────────────────────────────────────────────
 class LoginRequest(BaseModel):
-    username: str
+    username: str   # peut contenir un username OU une adresse email
     password: str
 
 class TokenResponse(BaseModel):
@@ -110,7 +110,26 @@ async def login(req: LoginRequest, request: Request, db: AsyncSession = Depends(
     client_ip = request.client.host if request.client else "unknown"
     _check_rate_limit(client_ip)
 
-    result = await db.execute(select(User).where(User.username == req.username))
+    identifier = req.username.strip()
+
+    from sqlalchemy import or_
+
+    if settings.REQUIRE_EMAIL_LOGIN:
+        # Mode final : uniquement par email
+        if '@' not in identifier:
+            raise HTTPException(
+                status_code=400,
+                detail="Veuillez utiliser votre adresse email pour vous connecter."
+            )
+        result = await db.execute(select(User).where(User.email == identifier))
+    else:
+        # Mode transition : email OU username
+        result = await db.execute(
+            select(User).where(
+                or_(User.username == identifier, User.email == identifier)
+            )
+        )
+
     user = result.scalar_one_or_none()
     if not user or not bcrypt.checkpw(req.password.encode(), user.password.encode()):
         raise HTTPException(status_code=401, detail="Identifiants incorrects")
@@ -151,6 +170,26 @@ async def list_users_public(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.is_active == True))
     users = result.scalars().all()
     return {"users": [{"username": u.username} for u in users]}
+
+
+@router.get("/users/no-email")
+async def list_users_without_email(
+    user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """[Admin] Liste les utilisateurs sans email — suivi de la migration."""
+    result = await db.execute(
+        select(User).where(User.email == None, User.is_active == True)  # noqa: E711
+    )
+    users = result.scalars().all()
+    return {
+        "count": len(users),
+        "ready_for_migration": len(users) == 0,
+        "users": [
+            {"id": u.id, "username": u.username, "created_at": u.created_at}
+            for u in users
+        ],
+    }
 
 
 @router.post("/logout")
