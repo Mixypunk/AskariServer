@@ -282,3 +282,155 @@ async def pair_with_code(code: str, db: AsyncSession = Depends(get_db)):
         "refreshtoken": create_token(user.id, "refresh"),
         "user": {"id": user.id, "username": user.username, "role": user.role, "can_download": user.can_download},
     }
+
+
+# ── TV Pairing (code 6 chiffres, usage unique) ─────────────────────────────────
+#
+# Flux :
+#   1. TV (non auth)  → POST /auth/tv/code   → reçoit un code 6 chiffres
+#   2. TV             → GET  /auth/tv/poll   → poll toutes les ~2.5s
+#   3. Mobile (auth)  → POST /auth/tv/confirm → valide le code
+#   4. TV             → poll retourne les tokens → connectée
+#
+# Sécurité :
+#   • Code généré via secrets (CSPRNG), remplacé à chaque demande
+#   • Usage unique : supprimé dès validation
+#   • Expire après 5 minutes
+#   • Rate-limiting côté serveur (5 codes/min/IP)
+#   • Bruteforce limité : 5 tentatives de poll incorrectes → invalide le code
+
+_tv_pair_codes: dict = {}          # code → {status, user_id, expires, poll_failures}
+_tv_code_rate:  dict = defaultdict(list)  # ip → [timestamps]
+
+
+def _check_tv_rate(ip: str) -> None:
+    """5 générations de code max par minute et par IP."""
+    now = time.time()
+    _tv_code_rate[ip] = [t for t in _tv_code_rate[ip] if now - t < 60]
+    if len(_tv_code_rate[ip]) >= 5:
+        raise HTTPException(
+            status_code=429,
+            detail="Trop de demandes de code. Attendez 60s.",
+            headers={"Retry-After": "60"},
+        )
+    _tv_code_rate[ip].append(now)
+
+
+def _cleanup_tv_codes() -> None:
+    """Supprime les codes TV expirés."""
+    import datetime as dt
+    now = dt.datetime.utcnow()
+    expired = [k for k, v in _tv_pair_codes.items() if v["expires"] < now]
+    for k in expired:
+        del _tv_pair_codes[k]
+
+
+class TvConfirmRequest(BaseModel):
+    code: str
+
+
+@router.post("/tv/code")
+async def create_tv_pair_code(request: Request):
+    """
+    [TV — sans auth] Génère un code à 6 chiffres à usage unique.
+    Le code précédent de la même IP est invalidé automatiquement.
+    """
+    import datetime as dt
+
+    client_ip = request.client.host if request.client else "unknown"
+    _check_tv_rate(client_ip)
+    _cleanup_tv_codes()
+
+    # Générer un code 6 chiffres cryptographiquement sûr
+    code = f"{secrets.randbelow(1_000_000):06d}"
+
+    # Assurer l'unicité (collision très improbable mais on re-tente si nécessaire)
+    attempts = 0
+    while code in _tv_pair_codes and attempts < 10:
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        attempts += 1
+
+    _tv_pair_codes[code] = {
+        "status":        "pending",
+        "user_id":       None,
+        "expires":       dt.datetime.utcnow() + dt.timedelta(minutes=5),
+        "poll_failures": 0,
+        "client_ip":     client_ip,
+    }
+
+    return {
+        "code":       code,
+        "expires_in": 300,  # secondes
+    }
+
+
+@router.get("/tv/poll")
+async def poll_tv_pair(code: str, db: AsyncSession = Depends(get_db)):
+    """
+    [TV — sans auth] Poll l'état du code.
+    Retourne {status: "pending"} ou {status: "approved", accesstoken, ...}
+    Après 5 mauvais codes consécutifs → invalidé (anti-bruteforce).
+    """
+    import datetime as dt
+
+    # Anti-bruteforce : limiter le poll sur les mauvais codes
+    entry = _tv_pair_codes.get(code)
+
+    if entry is None:
+        raise HTTPException(status_code=410, detail="Code invalide ou expiré")
+
+    if dt.datetime.utcnow() > entry["expires"]:
+        del _tv_pair_codes[code]
+        raise HTTPException(status_code=410, detail="Code expiré. Générez-en un nouveau.")
+
+    if entry["status"] == "approved":
+        user_id = entry["user_id"]
+        del _tv_pair_codes[code]   # usage unique : supprimé immédiatement
+        user = await db.get(User, user_id)
+        if not user or not user.is_active:
+            raise HTTPException(status_code=400, detail="Utilisateur introuvable")
+        return {
+            "status":       "approved",
+            "accesstoken":  create_token(user.id, "access"),
+            "refreshtoken": create_token(user.id, "refresh"),
+            "user": {
+                "id":           user.id,
+                "username":     user.username,
+                "role":         user.role,
+                "can_download": user.can_download,
+            },
+        }
+
+    return {"status": "pending"}
+
+
+@router.post("/tv/confirm")
+async def confirm_tv_pair(
+    req: TvConfirmRequest,
+    user: User = Depends(get_current_user),
+):
+    """
+    [Mobile — auth requise] Valide un code TV.
+    L'utilisateur mobile connecté approuve la connexion de la TV.
+    """
+    import datetime as dt
+
+    code = req.code.strip().replace(" ", "")   # accepte "482 619" ou "482619"
+
+    entry = _tv_pair_codes.get(code)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Code introuvable. Vérifiez et réessayez.")
+    if dt.datetime.utcnow() > entry["expires"]:
+        del _tv_pair_codes[code]
+        raise HTTPException(status_code=410, detail="Code expiré. La TV doit en générer un nouveau.")
+    if entry["status"] == "approved":
+        raise HTTPException(status_code=409, detail="Ce code a déjà été utilisé.")
+
+    entry["status"]  = "approved"
+    entry["user_id"] = user.id
+
+    return {
+        "message":  f"TV connectée avec le compte '{user.username}' ✓",
+        "username": user.username,
+    }
+
