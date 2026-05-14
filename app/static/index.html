@@ -525,6 +525,13 @@ textarea.minp{resize:none;}select.minp{cursor:pointer;}
         </div>
         <button class="bout" style="align-self:flex-start" onclick="changePwd()">Changer le mot de passe</button>
       </div>
+      </div>
+      <!-- Appairage -->
+      <div style="background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r);padding:24px;display:flex;flex-direction:column;gap:10px;grid-column:1/-1">
+        <div style="font-size:11px;color:var(--t3);font-weight:600;text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Connexion rapide (Mobile)</div>
+        <p style="font-size:13.5px;color:var(--t2);">Affiche un QR Code pour vous connecter rapidement depuis l'application mobile Askaria.</p>
+        <button class="lbtn" style="align-self:flex-start;padding:10px 16px;width:auto;" onclick="showFastConnect()">Afficher le QR Code</button>
+      </div>
     </div>
   </div>
 
@@ -634,6 +641,18 @@ textarea.minp{resize:none;}select.minp{cursor:pointer;}
     <input type="password" class="minp" id="npwd" placeholder="Mot de passe">
     <select class="minp" id="nrole"><option value="user">Utilisateur</option><option value="admin">Admin</option></select>
     <div class="macts"><button class="mbtn s" onclick="document.getElementById('usrm').classList.remove('on')">Annuler</button><button class="mbtn p" onclick="createUser()">Créer</button></div>
+  </div>
+</div>
+
+<!-- QR MODAL -->
+<div class="modal" id="qrm">
+  <div class="mbox" style="text-align:center">
+    <div class="mtit">Connexion rapide</div>
+    <p style="font-size:13px;color:var(--t2);margin-bottom:16px;">Scannez ce code depuis l'application mobile pour vous connecter instantanément.</p>
+    <div id="qrm-img" style="background:white;padding:12px;border-radius:8px;display:inline-block;margin-bottom:16px;">
+       <img src="" id="qrm-src" width="200" height="200" alt="QR Code" style="display:block">
+    </div>
+    <button class="mbtn s" style="width:100%" onclick="document.getElementById('qrm').classList.remove('on')">Fermer</button>
   </div>
 </div>
 
@@ -1587,6 +1606,17 @@ function makeDraggable(container, playlistId) {
       loadPlaylist(playlistId);
     });
   });
+}
+
+// ── FAST CONNECT (QR) ─────────────────────────────────────────────────────────
+async function showFastConnect() {
+  const data = await api('/auth/pair/code');
+  if (data && data.qr_data) {
+    document.getElementById('qrm-src').src = 'https://chart.googleapis.com/chart?chs=200x200&cht=qr&chl=' + encodeURIComponent(data.qr_data);
+    document.getElementById('qrm').classList.add('on');
+  } else {
+    toast('Erreur de génération du QR Code');
+  }
 }
 
 // ── BOOT ───────────────────────────────────────────────────────────

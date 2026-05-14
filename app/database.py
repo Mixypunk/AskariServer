@@ -36,6 +36,7 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     last_seen  = Column(DateTime, nullable=True)
     is_active  = Column(Boolean, default=True)
+    can_download = Column(Boolean, default=False)
 
 
 class Artist(Base):

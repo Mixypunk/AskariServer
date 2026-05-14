@@ -653,6 +653,7 @@ def _user_to_dict(u) -> dict:
         "id":         u.id,
         "username":   u.username,
         "role":       u.role,
+        "can_download": u.can_download,
         "email":      u.email,
         "birth_date": u.birth_date,
         "bio":        u.bio,

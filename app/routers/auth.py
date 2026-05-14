@@ -142,7 +142,7 @@ async def login(req: LoginRequest, request: Request, db: AsyncSession = Depends(
     return TokenResponse(
         accesstoken=create_token(user.id, "access"),
         refreshtoken=create_token(user.id, "refresh"),
-        user={"id": user.id, "username": user.username, "role": user.role}
+        user={"id": user.id, "username": user.username, "role": user.role, "can_download": user.can_download}
     )
 
 
@@ -162,7 +162,7 @@ async def refresh_token(req: RefreshRequest, db: AsyncSession = Depends(get_db))
 
 @router.get("/user")
 async def get_user_info(user: User = Depends(get_current_user)):
-    return {"id": user.id, "username": user.username, "role": user.role}
+    return {"id": user.id, "username": user.username, "role": user.role, "can_download": user.can_download}
 
 
 @router.get("/users")
@@ -280,5 +280,5 @@ async def pair_with_code(code: str, db: AsyncSession = Depends(get_db)):
     return {
         "accesstoken":  create_token(user.id, "access"),
         "refreshtoken": create_token(user.id, "refresh"),
-        "user": {"id": user.id, "username": user.username, "role": user.role},
+        "user": {"id": user.id, "username": user.username, "role": user.role, "can_download": user.can_download},
     }

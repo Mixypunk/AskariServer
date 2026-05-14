@@ -250,6 +250,9 @@ async def download_track(
     user: User = Depends(get_current_user),
 ):
     """Téléchargement complet du fichier audio (pour lecture offline)."""
+    if not user.can_download:
+        raise HTTPException(status_code=403, detail="Vous n'avez pas l'autorisation de télécharger de la musique.")
+        
     from fastapi.responses import FileResponse
     from sqlalchemy.orm import selectinload
     result = await db.execute(
