@@ -1329,7 +1329,7 @@ async function loadAdmin() {
         </div>
         <div style="font-size:11px;color:var(--t2);margin-top:2px">${x.is_active ? 'Actif' : 'Désactivé'}</div>
       </div>
-      ${x.role !== 'admin' ? `<button class="audel" onclick="delUser(${x.id})">Supprimer</button>` : ''}
+      ${x.role !== 'admin' ? `<button class="audel" onclick="delUser(${x.id},'${esc(x.username)}')">Gérer</button>` : ''}
     </div>`).join('');
 }
 async function doScan(inc) {
@@ -1368,10 +1368,14 @@ async function createUser() {
   const res = await post('/users/create', { username: u, password: p, role: r });
   if (res?.ok) { document.getElementById('usrm').classList.remove('on'); toast('Utilisateur créé !'); loadAdmin(); }
 }
-async function delUser(id) {
-  if (!confirm('Supprimer cet utilisateur ?')) return;
-  await fetch(`/users/${id}`, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + tok } });
-  toast('Utilisateur supprimé'); loadAdmin();
+async function delUser(id, name) {
+  const choice = prompt(`Gestion de "${name}"\n\n[1] Désactiver (ne peut plus se connecter, reste en BDD)\n[2] Supprimer définitivement (efface historique, playlists, favoris)\n\nTapez 1 ou 2 :`, "");
+  if (choice !== '1' && choice !== '2') return;
+  const hardDelete = choice === '2';
+  if (hardDelete && !confirm(`ATTENTION : Supprimer définitivement "${name}" ? Cette action est irréversible.`)) return;
+  await fetch(`/users/${id}?hard_delete=${hardDelete}`, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + tok } });
+  toast(hardDelete ? 'Utilisateur supprimé définitivement' : 'Utilisateur désactivé');
+  loadAdmin();
 }
 
 // ── HELPERS ────────────────────────────────────────────────────────
