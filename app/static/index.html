@@ -525,7 +525,6 @@ textarea.minp{resize:none;}select.minp{cursor:pointer;}
         </div>
         <button class="bout" style="align-self:flex-start" onclick="changePwd()">Changer le mot de passe</button>
       </div>
-      </div>
       <!-- Appairage -->
       <div style="background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r);padding:24px;display:flex;flex-direction:column;gap:10px;grid-column:1/-1">
         <div style="font-size:11px;color:var(--t3);font-weight:600;text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Connexion rapide (Mobile)</div>
@@ -1612,7 +1611,7 @@ function makeDraggable(container, playlistId) {
 async function showFastConnect() {
   const data = await api('/auth/pair/code');
   if (data && data.qr_data) {
-    document.getElementById('qrm-src').src = 'https://chart.googleapis.com/chart?chs=200x200&cht=qr&chl=' + encodeURIComponent(data.qr_data);
+    document.getElementById('qrm-src').src = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=' + encodeURIComponent(data.qr_data);
     document.getElementById('qrm').classList.add('on');
   } else {
     toast('Erreur de génération du QR Code');
