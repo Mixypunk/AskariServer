@@ -172,10 +172,27 @@ class LyricsCache(Base):
     cached_at = Column(DateTime, default=datetime.utcnow)
 
 
+class TvPairCode(Base):
+    """
+    Code à 6 chiffres pour connecter l'app TV via le mobile.
+    Stocké en DB pour être partagé entre tous les workers uvicorn.
+    Usage unique : supprimé dès validation ou expiration.
+    """
+    __tablename__ = "tv_pair_codes"
+    id         = Column(Integer, primary_key=True, index=True)
+    code       = Column(String(6), unique=True, nullable=False, index=True)
+    status     = Column(String(10), default="pending")   # "pending" | "approved"
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=True)
+    client_ip  = Column(String(45), nullable=True)        # IPv4 ou IPv6
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+
+
 async def init_db():
     """Crée les tables si elles n'existent pas (idempotent)."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all, checkfirst=True)
+
 
 
 async def get_db():

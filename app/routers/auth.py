@@ -284,23 +284,23 @@ async def pair_with_code(code: str, db: AsyncSession = Depends(get_db)):
     }
 
 
-# ── TV Pairing (code 6 chiffres, usage unique) ─────────────────────────────────
+# ── TV Pairing (code 6 chiffres, usage unique, stocké en DB) ──────────────────
+#
+# ⚠️  Le dict en mémoire ne fonctionne PAS avec --workers > 1 (uvicorn multi-process).
+#     Les codes sont donc stockés en PostgreSQL, partagé entre tous les workers.
 #
 # Flux :
-#   1. TV (non auth)  → POST /auth/tv/code   → reçoit un code 6 chiffres
-#   2. TV             → GET  /auth/tv/poll   → poll toutes les ~2.5s
-#   3. Mobile (auth)  → POST /auth/tv/confirm → valide le code
+#   1. TV (non auth)  → POST /auth/tv/code    → génère et stocke un code en DB
+#   2. TV             → GET  /auth/tv/poll    → poll toutes les ~2.5s
+#   3. Mobile (auth)  → POST /auth/tv/confirm → marque le code "approved" en DB
 #   4. TV             → poll retourne les tokens → connectée
 #
 # Sécurité :
-#   • Code généré via secrets (CSPRNG), remplacé à chaque demande
-#   • Usage unique : supprimé dès validation
-#   • Expire après 5 minutes
-#   • Rate-limiting côté serveur (5 codes/min/IP)
-#   • Bruteforce limité : 5 tentatives de poll incorrectes → invalide le code
+#   • Code généré via secrets (CSPRNG), usage unique
+#   • Expire après 5 minutes (nettoyage automatique à chaque POST)
+#   • Rate-limiting 5 codes/min/IP (en mémoire, par worker — suffisant)
 
-_tv_pair_codes: dict = {}          # code → {status, user_id, expires, poll_failures}
-_tv_code_rate:  dict = defaultdict(list)  # ip → [timestamps]
+_tv_code_rate: dict = defaultdict(list)   # ip → [timestamps]
 
 
 def _check_tv_rate(ip: str) -> None:
@@ -316,52 +316,55 @@ def _check_tv_rate(ip: str) -> None:
     _tv_code_rate[ip].append(now)
 
 
-def _cleanup_tv_codes() -> None:
-    """Supprime les codes TV expirés."""
-    import datetime as dt
-    now = dt.datetime.utcnow()
-    expired = [k for k, v in _tv_pair_codes.items() if v["expires"] < now]
-    for k in expired:
-        del _tv_pair_codes[k]
-
-
 class TvConfirmRequest(BaseModel):
     code: str
 
 
 @router.post("/tv/code")
-async def create_tv_pair_code(request: Request):
+async def create_tv_pair_code(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
     """
-    [TV — sans auth] Génère un code à 6 chiffres à usage unique.
-    Le code précédent de la même IP est invalidé automatiquement.
+    [TV — sans auth] Génère un code à 6 chiffres stocké en DB.
+    Nettoie les codes expirés à chaque appel.
     """
-    import datetime as dt
+    from ..database import TvPairCode
 
     client_ip = request.client.host if request.client else "unknown"
     _check_tv_rate(client_ip)
-    _cleanup_tv_codes()
 
-    # Générer un code 6 chiffres cryptographiquement sûr
-    code = f"{secrets.randbelow(1_000_000):06d}"
+    now = datetime.utcnow()
 
-    # Assurer l'unicité (collision très improbable mais on re-tente si nécessaire)
-    attempts = 0
-    while code in _tv_pair_codes and attempts < 10:
+    # Nettoyer les codes expirés
+    expired = await db.execute(
+        select(TvPairCode).where(TvPairCode.expires_at < now)
+    )
+    for old in expired.scalars().all():
+        await db.delete(old)
+
+    # Générer un code unique
+    for _ in range(20):
         code = f"{secrets.randbelow(1_000_000):06d}"
-        attempts += 1
+        existing = await db.execute(
+            select(TvPairCode).where(TvPairCode.code == code)
+        )
+        if existing.scalar_one_or_none() is None:
+            break
+    else:
+        raise HTTPException(status_code=503, detail="Impossible de générer un code unique.")
 
-    _tv_pair_codes[code] = {
-        "status":        "pending",
-        "user_id":       None,
-        "expires":       dt.datetime.utcnow() + dt.timedelta(minutes=5),
-        "poll_failures": 0,
-        "client_ip":     client_ip,
-    }
+    entry = TvPairCode(
+        code=code,
+        status="pending",
+        user_id=None,
+        client_ip=client_ip,
+        expires_at=now + timedelta(minutes=5),
+    )
+    db.add(entry)
+    await db.commit()
 
-    return {
-        "code":       code,
-        "expires_in": 300,  # secondes
-    }
+    return {"code": code, "expires_in": 300}
 
 
 @router.get("/tv/poll")
@@ -369,26 +372,30 @@ async def poll_tv_pair(code: str, db: AsyncSession = Depends(get_db)):
     """
     [TV — sans auth] Poll l'état du code.
     Retourne {status: "pending"} ou {status: "approved", accesstoken, ...}
-    Après 5 mauvais codes consécutifs → invalidé (anti-bruteforce).
     """
-    import datetime as dt
+    from ..database import TvPairCode
 
-    # Anti-bruteforce : limiter le poll sur les mauvais codes
-    entry = _tv_pair_codes.get(code)
+    now = datetime.utcnow()
+    result = await db.execute(
+        select(TvPairCode).where(TvPairCode.code == code)
+    )
+    entry = result.scalar_one_or_none()
 
     if entry is None:
-        raise HTTPException(status_code=410, detail="Code invalide ou expiré")
+        raise HTTPException(status_code=410, detail="Code invalide ou expiré.")
 
-    if dt.datetime.utcnow() > entry["expires"]:
-        del _tv_pair_codes[code]
+    if now > entry.expires_at:
+        await db.delete(entry)
+        await db.commit()
         raise HTTPException(status_code=410, detail="Code expiré. Générez-en un nouveau.")
 
-    if entry["status"] == "approved":
-        user_id = entry["user_id"]
-        del _tv_pair_codes[code]   # usage unique : supprimé immédiatement
+    if entry.status == "approved":
+        user_id = entry.user_id
+        await db.delete(entry)   # usage unique
+        await db.commit()
         user = await db.get(User, user_id)
         if not user or not user.is_active:
-            raise HTTPException(status_code=400, detail="Utilisateur introuvable")
+            raise HTTPException(status_code=400, detail="Utilisateur introuvable.")
         return {
             "status":       "approved",
             "accesstoken":  create_token(user.id, "access"),
@@ -408,26 +415,33 @@ async def poll_tv_pair(code: str, db: AsyncSession = Depends(get_db)):
 async def confirm_tv_pair(
     req: TvConfirmRequest,
     user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """
-    [Mobile — auth requise] Valide un code TV.
-    L'utilisateur mobile connecté approuve la connexion de la TV.
+    [Mobile — auth requise] Valide un code TV depuis le mobile connecté.
     """
-    import datetime as dt
+    from ..database import TvPairCode
 
     code = req.code.strip().replace(" ", "")   # accepte "482 619" ou "482619"
+    now  = datetime.utcnow()
 
-    entry = _tv_pair_codes.get(code)
+    result = await db.execute(
+        select(TvPairCode).where(TvPairCode.code == code)
+    )
+    entry = result.scalar_one_or_none()
+
     if entry is None:
-        raise HTTPException(status_code=404, detail="Code introuvable. Vérifiez et réessayez.")
-    if dt.datetime.utcnow() > entry["expires"]:
-        del _tv_pair_codes[code]
+        raise HTTPException(status_code=404, detail="Code introuvable. Vérifiez le code affiché sur la TV.")
+    if now > entry.expires_at:
+        await db.delete(entry)
+        await db.commit()
         raise HTTPException(status_code=410, detail="Code expiré. La TV doit en générer un nouveau.")
-    if entry["status"] == "approved":
+    if entry.status == "approved":
         raise HTTPException(status_code=409, detail="Ce code a déjà été utilisé.")
 
-    entry["status"]  = "approved"
-    entry["user_id"] = user.id
+    entry.status  = "approved"
+    entry.user_id = user.id
+    await db.commit()
 
     return {
         "message":  f"TV connectée avec le compte '{user.username}' ✓",
