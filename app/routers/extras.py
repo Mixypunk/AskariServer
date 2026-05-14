@@ -562,6 +562,7 @@ async def list_users(db: AsyncSession = Depends(get_db),
     return {"users": [
         {"id": u.id, "username": u.username, "role": u.role,
          "is_active": u.is_active,
+         "can_download": u.can_download,
          "last_seen": u.last_seen.isoformat() if u.last_seen else None}
         for u in result.scalars().all()
     ]}
@@ -609,6 +610,22 @@ async def delete_user(user_id: int, hard_delete: bool = False, db: AsyncSession 
         
     await db.commit()
     return {"ok": True}
+
+
+@users_router.patch("/users/{user_id}/permissions")
+async def update_user_permissions(
+    user_id: int,
+    can_download: bool,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """[Admin] Modifie les permissions d'un utilisateur (can_download)."""
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(404, "Utilisateur introuvable")
+    user.can_download = can_download
+    await db.commit()
+    return {"ok": True, "can_download": user.can_download}
 
 
 # ── PROFIL UTILISATEUR ────────────────────────────────────────────────────────

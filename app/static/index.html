@@ -1323,13 +1323,19 @@ async function loadAdmin() {
   document.getElementById('alfm').textContent = lf?.enabled ? `Connecté : ${lf.username}` : 'Non configuré';
   document.getElementById('ausers').innerHTML = (u?.users || []).map(x => `
     <div class="au">
-      <div>
+      <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:500">${esc(x.username)}
           <span style="font-size:10px;color:var(--ac);background:var(--ac3);padding:2px 8px;border-radius:20px;margin-left:7px">${x.role}</span>
         </div>
-        <div style="font-size:11px;color:var(--t2);margin-top:2px">${x.is_active ? 'Actif' : 'Désactivé'}</div>
+        <div style="font-size:11px;color:var(--t2);margin-top:3px;display:flex;gap:10px">
+          <span>${x.is_active ? '🟢 Actif' : '🔴 Désactivé'}</span>
+          <span>${x.can_download ? '⬇️ DL ✓' : '🚫 DL ✗'}</span>
+        </div>
       </div>
-      ${x.role !== 'admin' ? `<button class="audel" onclick="delUser(${x.id},'${esc(x.username)}')">Gérer</button>` : ''}
+      ${x.role !== 'admin' ? `<div style="display:flex;gap:7px;flex-shrink:0">
+        <button class="audel" style="border-color:rgba(255,255,255,.15);color:var(--t2)" onclick="toggleDownload(${x.id},'${esc(x.username)}',${x.can_download})">${x.can_download ? 'Bloquer DL' : 'Autoriser DL'}</button>
+        <button class="audel" onclick="delUser(${x.id},'${esc(x.username)}')">⚙️ Gérer</button>
+      </div>` : ''}
     </div>`).join('');
 }
 async function doScan(inc) {
@@ -1367,6 +1373,18 @@ async function createUser() {
   if (!u || !p) return;
   const res = await post('/users/create', { username: u, password: p, role: r });
   if (res?.ok) { document.getElementById('usrm').classList.remove('on'); toast('Utilisateur créé !'); loadAdmin(); }
+}
+async function toggleDownload(id, name, current) {
+  const newVal = !current;
+  const r = await fetch(`/users/${id}/permissions?can_download=${newVal}`, {
+    method: 'PATCH', headers: { 'Authorization': 'Bearer ' + tok }
+  });
+  if (r.ok) {
+    toast(newVal ? `Téléchargement autorisé pour ${name}` : `Téléchargement bloqué pour ${name}`);
+    loadAdmin();
+  } else {
+    toast('Erreur lors de la modification');
+  }
 }
 async function delUser(id, name) {
   const choice = prompt(`Gestion de "${name}"\n\n[1] Désactiver (ne peut plus se connecter, reste en BDD)\n[2] Supprimer définitivement (efface historique, playlists, favoris)\n\nTapez 1 ou 2 :`, "");
