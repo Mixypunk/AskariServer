@@ -929,7 +929,7 @@ function renderUsers(users) {
       <td class="td-muted">${fmtDate(u.last_seen)}</td>
       <td><span class="badge ${u.is_active ? 'badge-green' : 'badge-red'}">${u.is_active ? 'Actif' : 'Inactif'}</span></td>
       <td>
-        ${u.username !== me ? `<button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id},'${esc(u.username)}')">Supprimer</button>` : '<span style="color:var(--text3);font-size:12px">—</span>'}
+        ${u.username !== me ? `<button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id},'${esc(u.username)}')">Gérer</button>` : '<span style="color:var(--text3);font-size:12px">—</span>'}
       </td>
     </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text3)">Aucun utilisateur</td></tr>';
 }
@@ -958,13 +958,19 @@ async function addUser() {
 }
 
 async function deleteUser(id, name) {
-  if (!confirm(`Supprimer l'utilisateur "${name}" ?`)) return;
-  const r = await api('DELETE', `/users/${id}`);
+  const choice = prompt(`Gestion de "${name}"\n\nQue voulez-vous faire ?\n[1] Désactiver (l'utilisateur ne pourra plus se connecter)\n[2] Supprimer définitivement (efface historique, playlists, etc.)\n\nTapez 1 ou 2 :`, "");
+  
+  if (choice !== '1' && choice !== '2') return;
+  const hardDelete = choice === '2';
+  
+  if (hardDelete && !confirm(`ATTENTION : Êtes-vous certain de vouloir supprimer définitivement "${name}" ?`)) return;
+
+  const r = await api('DELETE', `/users/${id}?hard_delete=${hardDelete}`);
   if (r?.ok) {
-    toast(`Utilisateur "${name}" supprimé`, 'info');
+    toast(`Utilisateur "${name}" ${hardDelete ? 'supprimé définitivement' : 'désactivé'}`, 'info');
     loadUsers();
   } else {
-    toast('Impossible de supprimer cet utilisateur', 'error');
+    toast('Impossible de modifier cet utilisateur', 'error');
   }
 }
 

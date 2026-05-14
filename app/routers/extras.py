@@ -9,7 +9,7 @@ import asyncio
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, delete
 from sqlalchemy.orm import selectinload
 from datetime import datetime
 from pydantic import BaseModel, field_validator
@@ -17,7 +17,7 @@ from typing import Optional
 import bcrypt
 
 from ..database import (get_db, Song, Album, SongArtist, LyricsCache, PlayHistory,
-                         User, Favourite, Artist, AsyncSessionLocal)
+                         User, Favourite, Artist, AsyncSessionLocal, Playlist, PlaylistEntry)
 from ..routers.auth import get_current_user, require_admin, create_token
 from ..config import settings
 from ..scanner import make_hash, make_artist_hash
@@ -584,14 +584,29 @@ async def create_user(body: UserCreate, db: AsyncSession = Depends(get_db),
             "accesstoken": create_token(user.id, "access")}
 
 @users_router.delete("/users/{user_id}")
-async def delete_user(user_id: int, db: AsyncSession = Depends(get_db),
+async def delete_user(user_id: int, hard_delete: bool = False, db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin)):
     if user_id == admin.id:
         raise HTTPException(400, "Impossible de supprimer son propre compte")
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(404, "Utilisateur introuvable")
-    user.is_active = False
+    
+    if hard_delete:
+        # Remove user dependencies to respect foreign keys
+        await db.execute(delete(PlayHistory).where(PlayHistory.user_id == user.id))
+        await db.execute(delete(Favourite).where(Favourite.user_id == user.id))
+        
+        playlists_res = await db.execute(select(Playlist.id).where(Playlist.owner_id == user.id))
+        playlist_ids = playlists_res.scalars().all()
+        if playlist_ids:
+            await db.execute(delete(PlaylistEntry).where(PlaylistEntry.playlist_id.in_(playlist_ids)))
+            await db.execute(delete(Playlist).where(Playlist.id.in_(playlist_ids)))
+            
+        await db.delete(user)
+    else:
+        user.is_active = False
+        
     await db.commit()
     return {"ok": True}
 
