@@ -1610,11 +1610,11 @@ function makeDraggable(container, playlistId) {
 // ── FAST CONNECT (QR) ─────────────────────────────────────────────────────────
 async function showFastConnect() {
   const data = await api('/auth/pair/code');
-  if (data && data.qr_data) {
+  if (data && data.code) {
     const qrmImg = document.getElementById('qrm-img');
     qrmImg.innerHTML = '';
     new QRCode(qrmImg, {
-      text: data.qr_data,
+      text: window.location.origin + ' ' + data.code,
       width: 200,
       height: 200,
       colorDark : "#000000",
