@@ -649,7 +649,6 @@ textarea.minp{resize:none;}select.minp{cursor:pointer;}
     <div class="mtit">Connexion rapide</div>
     <p style="font-size:13px;color:var(--t2);margin-bottom:16px;">Scannez ce code depuis l'application mobile pour vous connecter instantanément.</p>
     <div id="qrm-img" style="background:white;padding:12px;border-radius:8px;display:inline-block;margin-bottom:16px;">
-       <img src="" id="qrm-src" width="200" height="200" alt="QR Code" style="display:block">
     </div>
     <button class="mbtn s" style="width:100%" onclick="document.getElementById('qrm').classList.remove('on')">Fermer</button>
   </div>
@@ -658,6 +657,7 @@ textarea.minp{resize:none;}select.minp{cursor:pointer;}
 <div id="ctx"></div>
 <div id="toast"></div>
 <audio id="aud" preload="metadata"></audio>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 
 'use strict';
@@ -1611,7 +1611,16 @@ function makeDraggable(container, playlistId) {
 async function showFastConnect() {
   const data = await api('/auth/pair/code');
   if (data && data.qr_data) {
-    document.getElementById('qrm-src').src = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=' + encodeURIComponent(data.qr_data);
+    const qrmImg = document.getElementById('qrm-img');
+    qrmImg.innerHTML = '';
+    new QRCode(qrmImg, {
+      text: data.qr_data,
+      width: 200,
+      height: 200,
+      colorDark : "#000000",
+      colorLight : "#ffffff",
+      correctLevel : QRCode.CorrectLevel.M
+    });
     document.getElementById('qrm').classList.add('on');
   } else {
     toast('Erreur de génération du QR Code');
