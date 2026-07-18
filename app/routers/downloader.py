@@ -17,7 +17,10 @@ def download_track_sync(track_id: str, download_folder: str, arl: str, format: s
         try:
             from deemix.api.deezer import Deezer
         except ImportError:
-            from deemix.plugins.deezer import Deezer
+            try:
+                from deemix.plugins.deezer import Deezer
+            except ImportError:
+                from deezer import Deezer
             
         try:
             from deemix.itemgen import generateItem
