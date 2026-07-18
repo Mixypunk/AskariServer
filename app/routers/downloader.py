@@ -59,7 +59,8 @@ async def download_deezer_track(
     download_folder = settings.music_dirs_list[0] if settings.music_dirs_list else "/music"
     
     # 1. Obtenir l'ID max actuel pour identifier la nouveauté
-    from sqlalchemy import func
+    from sqlalchemy import func, select
+    from ..database import Song
     max_id_result = await db.execute(select(func.max(Song.id)))
     max_id = max_id_result.scalar() or 0
 
