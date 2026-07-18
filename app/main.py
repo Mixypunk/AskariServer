@@ -22,6 +22,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+background_tasks = set()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # ── Validation SECRET_KEY ──────────────────────────────────────────────
@@ -39,14 +41,18 @@ async def lifespan(app: FastAPI):
         # raise RuntimeError("SECRET_KEY non configuree")
 
     logger.info("Askaria Server demarrage...")
-    os.makedirs(settings.CACHE_DIR, exist_ok=True)
+    await asyncio.to_thread(os.makedirs, settings.CACHE_DIR, exist_ok=True)
     await init_db()
 
     if settings.AUTO_SCAN_ON_START:
         from .scanner import scanner
-        asyncio.create_task(scanner.scan_all())
+        task = asyncio.create_task(scanner.scan_all())
+        background_tasks.add(task)
+        task.add_done_callback(background_tasks.discard)
 
-    asyncio.create_task(_pregenerate_artist_avatars())
+    task2 = asyncio.create_task(_pregenerate_artist_avatars())
+    background_tasks.add(task2)
+    task2.add_done_callback(background_tasks.discard)
     yield
     logger.info("Askaria Server arret propre")
 
@@ -59,13 +65,22 @@ app = FastAPI(
 )
 
 # ── CORS ───────────────────────────────────────────────────────────────────────
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.allowed_origins_list,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if "*" in settings.allowed_origins_list:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=".*",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.allowed_origins_list,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # ── Routes publiques (avant les routers — pas d'auth requise) ──────────────────
 @app.get("/health", tags=["System"])
@@ -147,17 +162,16 @@ async def _pregenerate_artist_avatars():
         from sqlalchemy import select
 
         async with AsyncSessionLocal() as db:
-            result = await db.execute(select(Artist))
-            artists = result.scalars().all()
-
-        count = 0
-        for artist in artists:
-            h = make_artist_hash(artist.name)
-            path = os.path.join(settings.CACHE_DIR, f"artist_{h}.webp")
-            if not os.path.exists(path):
-                await _generate_artist_image(h, path)
-                await asyncio.sleep(0.05)
-                count += 1
+            result = await db.stream_scalars(select(Artist))
+            count = 0
+            async for artist in result:
+                h = make_artist_hash(artist.name)
+                path = os.path.join(settings.CACHE_DIR, f"artist_{h}.webp")
+                exists = await asyncio.to_thread(os.path.exists, path)
+                if not exists:
+                    await _generate_artist_image(h, path)
+                    await asyncio.sleep(0.05)
+                    count += 1
 
         if count:
             logger.info(f"Avatars pre-generes : {count} artistes")

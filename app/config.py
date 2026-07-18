@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 import secrets
 
@@ -57,7 +57,7 @@ class Settings(BaseSettings):
 
     @property
     def music_dirs_list(self) -> List[str]:
-        return [d.strip() for d in self.MUSIC_DIRS.split(":") if d.strip()]
+        return [d.strip() for d in self.MUSIC_DIRS.split(";") if d.strip()]
 
     @property
     def allowed_origins_list(self) -> List[str]:
@@ -74,10 +74,7 @@ class Settings(BaseSettings):
         return self.SECRET_KEY in ("CHANGE_ME", "change-this-secret-key-in-production",
                                     "CHANGEZ-MOI-openssl-rand-hex-32")
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=True)
 
 
 settings = Settings()

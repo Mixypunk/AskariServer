@@ -244,15 +244,19 @@ class LibraryScanner:
         start = datetime.utcnow()
 
         try:
-            all_files = []
-            for music_dir in settings.music_dirs_list:
-                if os.path.exists(music_dir):
-                    for root, _, files in os.walk(music_dir):
-                        for f in files:
-                            if Path(f).suffix.lower() in SUPPORTED_FORMATS:
-                                all_files.append(os.path.join(root, f))
-                else:
-                    logger.warning(f"Dossier introuvable: {music_dir}")
+            def _get_files_sync():
+                _files = []
+                for music_dir in settings.music_dirs_list:
+                    if os.path.exists(music_dir):
+                        for root, _, files in os.walk(music_dir):
+                            for f in files:
+                                if Path(f).suffix.lower() in SUPPORTED_FORMATS:
+                                    _files.append(os.path.join(root, f))
+                    else:
+                        logger.warning(f"Dossier introuvable: {music_dir}")
+                return _files
+                
+            all_files = await asyncio.to_thread(_get_files_sync)
 
             self._progress["total"] = len(all_files)
             self._progress["lyrics"] = 0
@@ -273,7 +277,13 @@ class LibraryScanner:
                 logger.info(f"Telechargement paroles pour {len(lyrics_tasks)} titres...")
                 await self._batch_fetch_lyrics(lyrics_tasks)
 
-            elapsed = (datetime.utcnow() - start).seconds
+            # Update track count for all albums globally
+            async with AsyncSessionLocal() as db:
+                from sqlalchemy import text
+                await db.execute(text("UPDATE albums SET track_count = (SELECT COUNT(id) FROM songs WHERE songs.album_id = albums.id)"))
+                await db.commit()
+
+            elapsed = (datetime.utcnow() - start).total_seconds()
             logger.info(f"Scan termine : {len(all_files)} fichiers en {elapsed}s, {self._progress['lyrics']} paroles")
 
             # Nettoyage : supprimer les entrees DB dont le fichier n'existe plus
@@ -369,13 +379,7 @@ class LibraryScanner:
                         # Créer les liaisons song_artists (multi-artiste)
                         await self._sync_song_artists(db, song.id, meta)
 
-                        # Mettre a jour le compteur de pistes de l'album
-                        if album:
-                            from sqlalchemy import update, func
-                            count_r = await db.execute(
-                                select(func.count(Song.id)).where(Song.album_id == album.id))
-                            album.track_count = count_r.scalar() or 0
-                            await db.commit()
+                        # Removed per-file album track count update to prevent N+1 queries
 
                         return song.id
 
@@ -390,22 +394,24 @@ class LibraryScanner:
 
     async def _batch_fetch_lyrics(self, song_ids: list):
         """Telecharge les paroles manquantes"""
+        if not song_ids:
+            return
         async with AsyncSessionLocal() as db:
-            for song_id in song_ids:
-                try:
-                    cache_r = await db.execute(
-                        select(LyricsCache).where(LyricsCache.song_id == song_id))
-                    if cache_r.scalar_one_or_none():
-                        continue
-
-                    result2 = await db.execute(
-                        select(Song)
-                        .options(selectinload(Song.artist), selectinload(Song.album))
-                        .where(Song.id == song_id))
-                    song = result2.scalar_one_or_none()
-                    if not song:
-                        continue
-
+            try:
+                cache_r = await db.execute(select(LyricsCache.song_id).where(LyricsCache.song_id.in_(song_ids)))
+                cached_ids = set(cache_r.scalars().all())
+                
+                missing_ids = [sid for sid in song_ids if sid not in cached_ids]
+                if not missing_ids:
+                    return
+                
+                result2 = await db.execute(
+                    select(Song)
+                    .options(selectinload(Song.artist), selectinload(Song.album))
+                    .where(Song.id.in_(missing_ids)))
+                songs = result2.scalars().all()
+                
+                for song in songs:
                     # Paroles embarquees via thread pool
                     loop = asyncio.get_event_loop()
                     embedded = await loop.run_in_executor(
@@ -413,7 +419,7 @@ class LibraryScanner:
 
                     if embedded:
                         db.add(LyricsCache(
-                            song_id=song_id, content=embedded, synced=False, source="embedded"))
+                            song_id=song.id, content=embedded, synced=False, source="embedded"))
                         await db.commit()
                         self._progress["lyrics"] += 1
                         continue
@@ -425,15 +431,13 @@ class LibraryScanner:
                         song.title, artist_name, album_title, song.duration)
                     if lyrics:
                         db.add(LyricsCache(
-                            song_id=song_id, content=lyrics["content"],
+                            song_id=song.id, content=lyrics["content"],
                             synced=lyrics["synced"], source="lrclib"))
                         await db.commit()
                         self._progress["lyrics"] += 1
-
                     await asyncio.sleep(0.2)
-
-                except Exception as e:
-                    logger.debug(f"Erreur paroles song_id={song_id}: {e}")
+            except Exception as e:
+                logger.debug(f"Erreur batch fetch lyrics: {e}")
 
     async def _fetch_lrclib(self, title: str, artist: str,
                               album: str, duration: int) -> Optional[dict]:

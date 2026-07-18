@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, delete
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, Load
 from datetime import datetime
 from pydantic import BaseModel, field_validator
 from typing import Optional
@@ -272,9 +272,9 @@ async def top_tracks(
         select(Song, func.count(PlayHistory.id).label("plays"))
         .join(PlayHistory, PlayHistory.song_id == Song.id)
         .options(
-            selectinload(Song.artist),
-            selectinload(Song.album),
-            selectinload(Song.song_artists).selectinload(SongArtist.artist),
+            Load(Song).selectinload(Song.artist),
+            Load(Song).selectinload(Song.album),
+            Load(Song).selectinload(Song.song_artists).selectinload(SongArtist.artist),
         )
         .where(PlayHistory.user_id == user.id)
     )
@@ -335,9 +335,9 @@ async def play_history(
         select(PlayHistory, Song)
         .join(Song, Song.id == PlayHistory.song_id)
         .options(
-            selectinload(Song.artist),
-            selectinload(Song.album),
-            selectinload(Song.song_artists).selectinload(SongArtist.artist),
+            Load(Song).selectinload(Song.artist),
+            Load(Song).selectinload(Song.album),
+            Load(Song).selectinload(Song.song_artists).selectinload(SongArtist.artist),
         )
         .where(PlayHistory.user_id == user.id)
         .order_by(desc(PlayHistory.played_at))
@@ -485,15 +485,13 @@ async def _fetch_all_lyrics():
         total = len(all_songs)
         logger.info(f"Scan paroles : {total} titres a traiter")
 
+        cache_r = await db.execute(select(LyricsCache.song_id).where(LyricsCache.content != None).where(LyricsCache.source.not_in(["not_found", None])))
+        cached_ids = set(cache_r.scalars().all())
+
         for i, song in enumerate(all_songs):
             try:
-                # Verifier cache existant
-                cache_r = await db.execute(
-                    select(LyricsCache).where(LyricsCache.song_id == song.id))
-                cache = cache_r.scalar_one_or_none()
-
                 # Skip si deja trouve (pas not_found)
-                if cache and cache.content and cache.source not in ("not_found", None):
+                if song.id in cached_ids:
                     continue
 
                 # 1. .lrc ou tags embarques (run_in_executor : mutagen est sync)
@@ -608,6 +606,18 @@ async def delete_user(user_id: int, hard_delete: bool = False, db: AsyncSession 
     else:
         user.is_active = False
         
+    await db.commit()
+    return {"ok": True}
+
+
+@users_router.patch("/users/{user_id}/activate")
+async def activate_user(user_id: int, db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin)):
+    """[Admin] Réactive un utilisateur désactivé."""
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(404, "Utilisateur introuvable")
+    user.is_active = True
     await db.commit()
     return {"ok": True}
 
@@ -771,20 +781,24 @@ async def upload_avatar(
         raise HTTPException(400, "Image trop grande (max 5MB)")
 
     try:
-        from PIL import Image
-        import io
-        img = Image.open(io.BytesIO(body)).convert("RGB")
-        # Recadrer en carré centré
-        w, h = img.size
-        size = min(w, h)
-        left = (w - size) // 2
-        top  = (h - size) // 2
-        img = img.crop((left, top, left + size, top + size))
-        img.thumbnail((300, 300))
+        def process_img():
+            from PIL import Image
+            import io
+            img = Image.open(io.BytesIO(body)).convert("RGB")
+            # Recadrer en carré centré
+            w, h = img.size
+            size = min(w, h)
+            left = (w - size) // 2
+            top  = (h - size) // 2
+            img = img.crop((left, top, left + size, top + size))
+            img.thumbnail((300, 300))
 
-        # Sauvegarder
-        avatar_path = os.path.join(settings.CACHE_DIR, f"avatar_{user.id}.webp")
-        img.save(avatar_path, "WEBP", quality=88)
+            # Sauvegarder
+            avatar_path = os.path.join(settings.CACHE_DIR, f"avatar_{user.id}.webp")
+            img.save(avatar_path, "WEBP", quality=88)
+            return avatar_path
+            
+        avatar_path = await asyncio.to_thread(process_img)
 
         # Supprimer l'ancien si différent
         if user.avatar and user.avatar != avatar_path:

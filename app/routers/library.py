@@ -22,8 +22,11 @@ _CACHE_TTL = 300    # secondes
 
 def _cache_get(key: str):
     entry = _cache.get(key)
-    if entry and time.time() - entry[0] < _CACHE_TTL:
-        return entry[1]
+    if entry:
+        if time.time() - entry[0] < _CACHE_TTL:
+            return entry[1]
+        else:
+            del _cache[key]
     return None
 
 def _cache_set(key: str, data):
@@ -148,7 +151,8 @@ async def get_songs_folder(
     songs = result.scalars().all()
     favs = await db.execute(select(Favourite.song_id).where(Favourite.user_id == user.id))
     fav_ids = {f[0] for f in favs.all()}
-    return {"tracks": [song_to_dict(s, fav_ids) for s in songs]}
+    total_count = await db.scalar(select(func.count(Song.id)))
+    return {"tracks": [song_to_dict(s, fav_ids) for s in songs], "total": total_count}
 
 
 @songs_router.get("/getall/songs")
@@ -169,7 +173,8 @@ async def get_all_songs(
     if cached_songs is not None:
         # Injecter is_favourite sur une copie legere (evite de muter le cache)
         items = [{**s, "is_favourite": s["_song_id"] in fav_ids} for s in cached_songs]
-        return {"items": items, "total": len(items)}
+        total_count = await db.scalar(select(func.count(Song.id)))
+        return {"items": items, "total": total_count}
 
     result = await db.execute(
         select(Song)
@@ -183,7 +188,8 @@ async def get_all_songs(
     base_items = [dict(song_to_dict(s), _song_id=s.id) for s in songs]
     _cache_set(cache_key, base_items)
     items = [{**s, "is_favourite": s["_song_id"] in fav_ids} for s in base_items]
-    return {"items": items, "total": len(items)}
+    total_count = await db.scalar(select(func.count(Song.id)))
+    return {"items": items, "total": total_count}
 
 
 # ── ALBUMS ─────────────────────────────────────────────────────────────────────
@@ -216,15 +222,24 @@ async def get_albums(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    cache_key = f"albums:{start}:{limit}"
+    cache_key = f"albums:{start}:{limit}:{sortby}:{reverse}"
     cached = _cache_get(cache_key)
     if cached:
         return {"items": cached}
 
+    is_desc = str(reverse).lower() in ("1", "true")
+    
+    if sortby == "created_date":
+        order_col = Album.id.desc() if is_desc else Album.id.asc()
+    elif sortby == "year":
+        order_col = Album.year.desc() if is_desc else Album.year.asc()
+    else:
+        order_col = Album.title.desc() if is_desc else Album.title.asc()
+
     result = await db.execute(
         select(Album)
         .options(selectinload(Album.artist))
-        .order_by(Album.title)
+        .order_by(order_col)
         .offset(start).limit(limit)
     )
     albums = result.scalars().all()
@@ -273,19 +288,28 @@ def artist_to_dict(a: Artist) -> dict:
 async def get_artists(
     start: int = 0,
     limit: int = 200,
+    sortby: str = "name",
+    reverse: str = "0",
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    cache_key = f"artists:{start}:{limit}"
+    cache_key = f"artists:{start}:{limit}:{sortby}:{reverse}"
     cached = _cache_get(cache_key)
     if cached:
         return {"items": cached}
+
+    is_desc = str(reverse).lower() in ("1", "true")
+    
+    if sortby == "created_date":
+        order_col = Artist.id.desc() if is_desc else Artist.id.asc()
+    else:
+        order_col = Artist.name.desc() if is_desc else Artist.name.asc()
 
     result = await db.execute(
         select(Artist)
         .options(selectinload(Artist.albums), selectinload(Artist.songs))
         .offset(start).limit(limit)
-        .order_by(Artist.name)
+        .order_by(order_col)
     )
     artists = result.scalars().all()
     items = [artist_to_dict(a) for a in artists]
@@ -295,18 +319,15 @@ async def get_artists(
 
 async def _find_artist_by_hash(db, artist_hash: str):
     """Trouve un artiste par son hash xxhash — utilise un cache mémoire pour éviter le full scan."""
-    # Cas 1 : hash en cache → direct
-    if artist_hash in _artist_hash_cache:
-        return await db.get(Artist, _artist_hash_cache[artist_hash])
-
-    # Cas 2 : construire le cache depuis la DB (une seule fois)
-    if not _artist_hash_cache:
+    if artist_hash not in _artist_hash_cache:
+        # Rebuild cache
+        _artist_hash_cache.clear()
         result = await db.execute(select(Artist.id, Artist.name))
         for row in result.all():
             _artist_hash_cache[make_artist_hash(row.name)] = row.id
-        if artist_hash in _artist_hash_cache:
-            return await db.get(Artist, _artist_hash_cache[artist_hash])
-
+            
+    if artist_hash in _artist_hash_cache:
+        return await db.get(Artist, _artist_hash_cache[artist_hash])
     return None
 
 
@@ -570,11 +591,12 @@ async def add_tracks(
         select(func.max(PlaylistEntry.position)).where(PlaylistEntry.playlist_id == playlist_id))
     max_pos = result.scalar() or 0
     added = 0
+    song_r = await db.execute(select(Song).where(Song.hash.in_(body.trackhashes)))
+    songs = song_r.scalars().all()
+    hash_to_id = {s.hash: s.id for s in songs}
     for i, h in enumerate(body.trackhashes):
-        song_r = await db.execute(select(Song).where(Song.hash == h))
-        song = song_r.scalar_one_or_none()
-        if song:
-            db.add(PlaylistEntry(playlist_id=playlist_id, song_id=song.id, position=max_pos + i + 1))
+        if h in hash_to_id:
+            db.add(PlaylistEntry(playlist_id=playlist_id, song_id=hash_to_id[h], position=max_pos + i + 1))
             added += 1
     playlist.updated_at = datetime.utcnow()
     await db.commit()
