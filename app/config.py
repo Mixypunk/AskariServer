@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     LASTFM_PASSWORD_HASH: str = ""
 
     # Deemix
-    DEEZER_ARL: str = "38628d2d7344983044181cb52334118364fbd775c99c1d56bf735d3b9afdca2a4493a2e752abcf9c83f0744e1e3aaf90"
+    DEEZER_ARL: str = ""
     DEEMIX_FORMAT: str = "FLAC"
 
     ALLOW_REGISTRATION: bool = False

@@ -50,3 +50,6 @@ services:
       LASTFM_API_SECRET: ""
       LASTFM_USERNAME: ""
       LASTFM_PASSWORD_HASH: ""
+
+      # ── Deemix ────────────────────────────────────────────────────────────
+      DEEZER_ARL: "38628d2d7344983044181cb52334118364fbd775c99c1d56bf735d3b9afdca2a4493a2e752abcf9c83f0744e1e3aaf90"
