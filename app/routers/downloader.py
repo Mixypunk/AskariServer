@@ -115,12 +115,13 @@ async def search_deezer(
     
     # 1. Fetch local songs that match the query
     from sqlalchemy import select, or_
-    from ..database import Song
+    from sqlalchemy.orm import selectinload
+    from ..database import Song, Artist
     
-    local_songs_query = select(Song).where(
+    local_songs_query = select(Song).join(Artist, isouter=True).options(selectinload(Song.artist)).where(
         or_(
             Song.title.ilike(f"%{q}%"),
-            Song.artist.ilike(f"%{q}%")
+            Artist.name.ilike(f"%{q}%")
         )
     )
     result = await db.execute(local_songs_query)
@@ -132,7 +133,7 @@ async def search_deezer(
         
         for s in local_songs:
             lt = s.title.lower().strip() if s.title else ""
-            la = s.artist.lower().strip() if s.artist else ""
+            la = s.artist.name.lower().strip() if s.artist and s.artist.name else ""
             # Correspondance souple sur le titre et l'artiste
             if (dt in lt or lt in dt) and (da in la or la in da):
                 return True
