@@ -481,6 +481,7 @@ textarea.minp{resize:none;}select.minp{cursor:pointer;}
       <button class="chip" onclick="sfilt('tracks',this)">Titres</button>
       <button class="chip" onclick="sfilt('albums',this)">Albums</button>
       <button class="chip" onclick="sfilt('artists',this)">Artistes</button>
+      <button class="chip" onclick="sfilt('deezer',this)">Deezer</button>
     </div>
     <div id="sres"></div>
   </div>
@@ -1080,22 +1081,38 @@ function onSearch(q) {
   clearTimeout(stmr);
   if (!q.trim()) { document.getElementById('sres').innerHTML = ''; sr = {}; return; }
   stmr = setTimeout(async () => {
-    const d = await api(`/search/top?q=${encodeURIComponent(q)}&limit=8`);
-    if (d) { sr = d; renderSr(); }
+    if (sf === 'deezer') {
+      const d = await api(`/downloader/deezer/search?q=${encodeURIComponent(q)}&limit=20`);
+      if (d && d.data) { sr = { deezer: d.data }; renderSr(); }
+    } else {
+      const d = await api(`/search/top?q=${encodeURIComponent(q)}&limit=8`);
+      if (d) { sr = d; renderSr(); }
+    }
   }, 260);
 }
 function renderSr() {
   let h = '';
-  if ((sf === 'all' || sf === 'tracks') && sr.tracks?.length) {
-    const qid = regQ(sr.tracks);
-    h += `<div class="sec" style="margin:0 0 11px"><h2 style="font-size:15px">Titres</h2></div>
+  if (sf === 'deezer' && sr.deezer?.length) {
+    const d_tracks = sr.deezer.map(t => ({
+      is_deezer: true, id: t.id, title: t.title, artist: t.artist.name, album: t.album.title,
+      duration: t.duration, preview: t.preview, image: t.album.cover_xl, hash: 'dz_'+t.id
+    }));
+    const qid = regQ(d_tracks);
+    h += `<div class="sec" style="margin:0 0 11px"><h2 style="font-size:15px">Résultats Deezer</h2></div>
       <div class="tblh"><span>#</span><span>Titre</span><span>Album</span><span>Durée</span><span></span></div>`;
-    h += sr.tracks.map((s, i) => trow(s, i, qid)).join('');
+    h += d_tracks.map((s, i) => trow(s, i, qid)).join('');
+  } else {
+    if ((sf === 'all' || sf === 'tracks') && sr.tracks?.length) {
+      const qid = regQ(sr.tracks);
+      h += `<div class="sec" style="margin:0 0 11px"><h2 style="font-size:15px">Titres</h2></div>
+        <div class="tblh"><span>#</span><span>Titre</span><span>Album</span><span>Durée</span><span></span></div>`;
+      h += sr.tracks.map((s, i) => trow(s, i, qid)).join('');
+    }
+    if ((sf === 'all' || sf === 'albums') && sr.albums?.length)
+      h += `<div class="sec" style="margin:22px 0 11px"><h2 style="font-size:15px">Albums</h2></div><div class="grid">${sr.albums.map(albCard).join('')}</div>`;
+    if ((sf === 'all' || sf === 'artists') && sr.artists?.length)
+      h += `<div class="sec" style="margin:22px 0 11px"><h2 style="font-size:15px">Artistes</h2></div><div class="grid">${sr.artists.map(artCard).join('')}</div>`;
   }
-  if ((sf === 'all' || sf === 'albums') && sr.albums?.length)
-    h += `<div class="sec" style="margin:22px 0 11px"><h2 style="font-size:15px">Albums</h2></div><div class="grid">${sr.albums.map(albCard).join('')}</div>`;
-  if ((sf === 'all' || sf === 'artists') && sr.artists?.length)
-    h += `<div class="sec" style="margin:22px 0 11px"><h2 style="font-size:15px">Artistes</h2></div><div class="grid">${sr.artists.map(artCard).join('')}</div>`;
   if (!h) h = '<div class="empty"><p>Aucun résultat</p></div>';
   document.getElementById('sres').innerHTML = h;
 }
@@ -1156,11 +1173,20 @@ function playFromQ(qid, idx) {
 function loadTrack(s) {
   if (!s) return; cur = s;
   const h = s.trackhash || s.hash;
-  aud.src = `/stream/file/${h}/legacy?token=${tok}`;
+  if (s.is_deezer) {
+    aud.src = s.preview;
+    aud.deezer_hash = null;
+    post(`/downloader/deezer/${s.id}`, {}).then(res => {
+      if (res && res.hash) aud.deezer_hash = res.hash;
+    });
+  } else {
+    aud.src = `/stream/file/${h}/legacy?token=${tok}`;
+  }
   document.getElementById('ptit').textContent = s.title || '—';
   document.getElementById('part').textContent = s.artist || '—';
   const ih = s.image || h;
-  const img = `<img src="/img/thumbnail/${ih}" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover">`;
+  const imgUrl = s.is_deezer ? ih : `/img/thumbnail/${ih}`;
+  const img = `<img src="${imgUrl}" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover">`;
   document.getElementById('pcov').innerHTML = img;
   document.getElementById('lycov').innerHTML = img;
   document.getElementById('lytit').textContent = s.title || '—';
@@ -1172,7 +1198,7 @@ function loadTrack(s) {
   if ('mediaSession' in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: s.title, artist: s.artist || '', album: s.album || '',
-      artwork: [{ src: `/img/thumbnail/${ih}`, sizes: '256x256', type: 'image/webp' }]
+      artwork: [{ src: s.is_deezer ? ih : `/img/thumbnail/${ih}`, sizes: '256x256', type: 'image/webp' }]
     });
     navigator.mediaSession.setActionHandler('previoustrack', prev);
     navigator.mediaSession.setActionHandler('nexttrack', next);
@@ -1242,6 +1268,24 @@ aud.addEventListener('timeupdate', () => {
 });
 
 function _onTrackEnd() {
+  if (cur && cur.is_deezer) {
+    if (aud.deezer_hash) {
+      cur.is_deezer = false;
+      cur.hash = aud.deezer_hash;
+      cur.trackhash = aud.deezer_hash;
+      aud.src = `/stream/file/${aud.deezer_hash}/legacy?token=${tok}`;
+      aud.onloadedmetadata = () => {
+        aud.currentTime = 30;
+        aud.play();
+        aud.onloadedmetadata = null;
+      };
+      _endedGuard = false;
+      return;
+    } else {
+      toast("Le téléchargement n'est pas encore terminé, passage au titre suivant.");
+    }
+  }
+
   if (rep === 'one') { aud.currentTime = 0; aud.play(); _endedGuard = false; }
   else if (rep === 'all' || shuf || Qi < Q.length - 1) next();
   else updIco(false);

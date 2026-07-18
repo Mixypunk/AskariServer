@@ -101,6 +101,7 @@ from .routers.extras  import (lyrics_router, stats_router, scan_router,
 from .routers.stream  import router as stream_router
 from .routers.compat  import compat_router
 from .routers.websocket import router as ws_router
+from .routers.downloader import router as downloader_router
 
 app.include_router(auth_router,       prefix="/auth",   tags=["Auth"])
 app.include_router(users_router,                        tags=["Users"])
@@ -114,6 +115,7 @@ app.include_router(stats_router,                        tags=["Stats"])
 app.include_router(scan_router,                         tags=["Scan"])
 app.include_router(favourites_router,                   tags=["Favourites"])
 app.include_router(radio_router,                        tags=["Radio"])
+app.include_router(downloader_router,                   tags=["Downloader"])
 app.include_router(stream_router,    prefix="/stream",  tags=["Stream"])
 # Routes download et waveform accessibles sans prefix (compatibilité app mobile)
 app.include_router(stream_router,    prefix="",         tags=["Stream"], include_in_schema=False)
