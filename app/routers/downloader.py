@@ -30,11 +30,21 @@ def download_track_sync(track_id: str, download_folder: str, arl: str, format: s
         # S'assurer que le dossier de téléchargement existe
         os.makedirs(download_folder, exist_ok=True)
         
-        # Téléchargement
-        download.download_track(dz, track_id, deemix_settings, download_folder)
-        logger.info(f"Téléchargement du morceau {track_id} réussi.")
+        try:
+            deemix_settings['download_format'] = format
+            download.download_track(dz, track_id, deemix_settings, download_folder)
+            logger.info(f"Téléchargement du morceau {track_id} réussi en {format}.")
+        except Exception as e:
+            logger.warning(f"Échec du téléchargement en {format} pour {track_id}: {e}. Tentative de repli en MP3_128...")
+            try:
+                deemix_settings['download_format'] = "MP3_128"
+                download.download_track(dz, track_id, deemix_settings, download_folder)
+                logger.info(f"Téléchargement du morceau {track_id} réussi en MP3_128.")
+            except Exception as e2:
+                logger.error(f"Échec définitif du téléchargement (track {track_id}): {e2}")
+                raise Exception(f"Impossible de télécharger le morceau (Vérifiez votre compte Deezer).")
     except Exception as e:
-        logger.error(f"Erreur lors du téléchargement (track {track_id}): {e}")
+        logger.error(f"Erreur globale downloader (track {track_id}): {e}")
         raise
 
 @router.post("/deezer/{track_id}")
@@ -54,13 +64,16 @@ async def download_deezer_track(
     max_id = max_id_result.scalar() or 0
 
     # 2. Téléchargement bloquant (mais dans un thread pour ne pas bloquer l'Event Loop)
-    await asyncio.to_thread(
-        download_track_sync,
-        track_id,
-        download_folder,
-        settings.DEEZER_ARL,
-        settings.DEEMIX_FORMAT
-    )
+    try:
+        await asyncio.to_thread(
+            download_track_sync,
+            track_id,
+            download_folder,
+            settings.DEEZER_ARL,
+            settings.DEEMIX_FORMAT
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     
     # 3. Lancer un scan incrémental pour ajouter le fichier à la BDD
     from ..scanner import scanner
@@ -88,6 +101,7 @@ async def download_deezer_track(
 async def search_deezer(
     q: str,
     limit: int = 50,
+    db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
     """
@@ -99,11 +113,42 @@ async def search_deezer(
         
     url = f"https://api.deezer.com/search?q={q}&limit={limit}"
     
+    # 1. Fetch local songs that match the query
+    from sqlalchemy import select, or_
+    from ..database import Song
+    
+    local_songs_query = select(Song).where(
+        or_(
+            Song.title.ilike(f"%{q}%"),
+            Song.artist.ilike(f"%{q}%")
+        )
+    )
+    result = await db.execute(local_songs_query)
+    local_songs = result.scalars().all()
+    
+    def is_already_local(deezer_track):
+        dt = deezer_track.get("title", "").lower().strip()
+        da = deezer_track.get("artist", {}).get("name", "").lower().strip()
+        
+        for s in local_songs:
+            lt = s.title.lower().strip() if s.title else ""
+            la = s.artist.lower().strip() if s.artist else ""
+            # Correspondance souple sur le titre et l'artiste
+            if (dt in lt or lt in dt) and (da in la or la in da):
+                return True
+        return False
+    
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(url)
             response.raise_for_status()
             data = response.json()
+            
+            # 2. Filtrer les résultats
+            if "data" in data:
+                filtered_data = [t for t in data["data"] if not is_already_local(t)]
+                data["data"] = filtered_data
+                
             return data
         except Exception as e:
             logger.error(f"Erreur lors de la recherche Deezer avec '{q}': {e}")
