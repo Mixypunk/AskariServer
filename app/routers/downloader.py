@@ -42,6 +42,7 @@ def download_track_sync(track_id: str, download_folder: str, arl: str, format: s
             # Fallback for older versions
             deemix_settings = settings.load() if hasattr(settings, "load") else {}
             
+        # S'assurer que le dossier de téléchargement existe
         deemix_settings['downloadLocation'] = download_folder
         os.makedirs(download_folder, exist_ok=True)
         
@@ -49,23 +50,38 @@ def download_track_sync(track_id: str, download_folder: str, arl: str, format: s
         
         # Map Format -> Bitrate: 9=FLAC, 3=320, 1=128
         b_map = {"FLAC": 9, "MP3_320": 3, "MP3_128": 1}
+        bitrate = b_map.get(format, 1)
         
-        try:
-            bitrate = b_map.get(format, 1)
-            item = generateItem(dz, link, bitrate)
-            dl = Downloader(dz, item, deemix_settings)
-            dl.start()
+        def get_all_files():
+            res = set()
+            for root, _, files in os.walk(download_folder):
+                for f in files:
+                    res.add(os.path.join(root, f))
+            return res
+
+        before_files = get_all_files()
+        
+        item = generateItem(dz, link, bitrate)
+        dl = Downloader(dz, item, deemix_settings)
+        dl.start()
+        
+        after_files = get_all_files()
+        new_files = after_files - before_files
+        
+        if not new_files:
+            logger.warning(f"Aucun fichier créé (silencieux) en {format} pour {track_id}. Repli MP3_128...")
+            item_fallback = generateItem(dz, link, 1)
+            dl_fallback = Downloader(dz, item_fallback, deemix_settings)
+            dl_fallback.start()
+            
+            final_files = get_all_files() - before_files
+            if not final_files:
+                raise Exception("Le téléchargement a échoué (Vérifiez la validité de l'ARL gratuit/premium).")
+            else:
+                logger.info(f"Téléchargement du morceau {track_id} réussi en MP3_128 (repli).")
+        else:
             logger.info(f"Téléchargement du morceau {track_id} réussi en {format}.")
-        except Exception as e:
-            logger.warning(f"Échec du téléchargement en {format} pour {track_id}: {e}. Tentative de repli en MP3_128...")
-            try:
-                item = generateItem(dz, link, 1) # Force MP3_128
-                dl = Downloader(dz, item, deemix_settings)
-                dl.start()
-                logger.info(f"Téléchargement du morceau {track_id} réussi en MP3_128.")
-            except Exception as e2:
-                logger.error(f"Échec définitif du téléchargement (track {track_id}): {e2}")
-                raise Exception(f"Impossible de télécharger le morceau (Vérifiez votre compte Deezer).")
+            
     except Exception as e:
         logger.error(f"Erreur globale downloader (track {track_id}): {e}")
         raise
