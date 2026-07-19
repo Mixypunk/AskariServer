@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = "postgresql+asyncpg://askaria:askaria@db:5432/askaria"
 
-    CACHE_DIR: str = "/data/cache"
+    CACHE_DIR: str = "/music/img/artwork"
     THUMB_SIZE: int = 300
     THUMB_LARGE_SIZE: int = 600
 

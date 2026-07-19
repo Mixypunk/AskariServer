@@ -162,6 +162,28 @@ async def _get_or_cache_thumbnail(image_hash: str) -> str | None:
 
 # ── ROUTES IMAGES ─────────────────────────────────────────────────────────────
 
+@compat_router.get("/img/artwork/{image_hash:path}")
+async def get_artwork(image_hash: str):
+    """Sert la pochette HD d'un titre ou album"""
+    clean = image_hash.split("?")[0].replace(".webp", "").strip("/")
+    
+    hd_path = os.path.join(settings.CACHE_DIR, f"{clean}_hd.webp")
+    if os.path.exists(hd_path):
+        return FileResponse(hd_path, media_type="image/webp")
+        
+    thumb_path = os.path.join(settings.CACHE_DIR, f"{clean}.webp")
+    if os.path.exists(thumb_path):
+        return FileResponse(thumb_path, media_type="image/webp")
+
+    generated = await _get_or_cache_thumbnail(clean)
+    if generated and os.path.exists(generated):
+        # Essayer de voir si le hd a été généré entre temps
+        if os.path.exists(hd_path):
+            return FileResponse(hd_path, media_type="image/webp")
+        return FileResponse(generated, media_type="image/webp")
+
+    return Response(status_code=404)
+
 @compat_router.get("/img/thumbnail/{image_hash:path}")
 async def get_thumbnail(image_hash: str):
     """Sert la pochette d'un titre ou album"""

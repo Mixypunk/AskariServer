@@ -7,7 +7,7 @@ services:
       - "7777:7777"
 
     volumes:
-      - /mnt/NAS/Media/Music:/music:ro
+      - /mnt/NAS/Media/Music:/music
       - /mnt/Apps/askariserver:/data
 
     environment:
