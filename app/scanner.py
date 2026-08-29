@@ -110,24 +110,76 @@ def _extract_metadata_sync(filepath: str) -> Optional[dict]:
         return None
 
 
-async def _fetch_deezer_album_cover(artist: str, album_title: str) -> Optional[str]:
-    """Recherche la cover d'un album sur l'API Deezer et retourne l'URL cover_xl."""
+def _extract_thumbnail_sync(filepath: str, thumb_hash: str, cache_dir: str,
+                              thumb_size: int, hd_size: int) -> Optional[str]:
+    """Extraction thumbnail (sync, appellee via run_in_executor)"""
     try:
-        async with httpx.AsyncClient(timeout=8) as client:
-            r = await client.get(
-                "https://api.deezer.com/search/album",
-                params={"q": f"{artist} {album_title}", "limit": 1},
-                headers={"User-Agent": "AskariServer/1.0"},
-            )
-            if r.status_code == 200:
-                data = r.json().get("data", [])
-                if data:
-                    url = data[0].get("cover_xl") or data[0].get("cover_big") or data[0].get("cover")
-                    if url and "default_album" not in url:
-                        return url
-    except Exception as e:
-        logger.debug(f"Deezer cover fetch error for '{artist} - {album_title}': {e}")
-    return None
+        import io
+        from PIL import Image
+        from mutagen.id3 import ID3
+        from mutagen.flac import FLAC
+        from mutagen.mp4 import MP4
+
+        os.makedirs(cache_dir, exist_ok=True)
+        thumb_path = os.path.join(cache_dir, f"{thumb_hash}.webp")
+        if os.path.exists(thumb_path):
+            return thumb_path
+
+        img_data = None
+        ext = Path(filepath).suffix.lower()
+
+        try:
+            if ext == ".mp3":
+                tags = ID3(filepath)
+                for tag in tags.values():
+                    if hasattr(tag, "FrameID") and tag.FrameID == "APIC":
+                        img_data = tag.data
+                        break
+            elif ext == ".flac":
+                audio = FLAC(filepath)
+                if audio.pictures:
+                    img_data = audio.pictures[0].data
+            elif ext in (".m4a", ".aac"):
+                audio = MP4(filepath)
+                if "covr" in audio.tags:
+                    img_data = bytes(audio.tags["covr"][0])
+        except Exception:
+            pass
+
+        # Fallback : cover.jpg dans le dossier
+        if not img_data:
+            folder = Path(filepath).parent
+            for cover_name in ["cover.jpg", "cover.jpeg", "cover.png",
+                                 "folder.jpg", "front.jpg", "album.jpg"]:
+                cover = folder / cover_name
+                if cover.exists():
+                    try:
+                        img = Image.open(cover).convert("RGB")
+                        thumb = img.copy()
+                        thumb.thumbnail((thumb_size, thumb_size))
+                        thumb.save(thumb_path, "WEBP", quality=85)
+                        hd_path = os.path.join(cache_dir, f"{thumb_hash}_hd.webp")
+                        if not os.path.exists(hd_path):
+                            hd = img.copy()
+                            hd.thumbnail((hd_size, hd_size))
+                            hd.save(hd_path, "WEBP", quality=92)
+                        return thumb_path
+                    except Exception:
+                        pass
+            return None
+
+        img = Image.open(io.BytesIO(img_data)).convert("RGB")
+        thumb = img.copy()
+        thumb.thumbnail((thumb_size, thumb_size))
+        thumb.save(thumb_path, "WEBP", quality=85)
+        hd_path = os.path.join(cache_dir, f"{thumb_hash}_hd.webp")
+        if not os.path.exists(hd_path):
+            hd = img.copy()
+            hd.thumbnail((hd_size, hd_size))
+            hd.save(hd_path, "WEBP", quality=92)
+        return thumb_path
+    except Exception:
+        return None
 
 
 def _get_embedded_lyrics_sync(filepath: str) -> Optional[str]:
@@ -277,12 +329,23 @@ class LibraryScanner:
                     artist = await self._get_or_create_artist(db, artist_list[0])
                     album  = await self._get_or_create_album(db, meta, artist)
 
+                    # Extraction thumbnail dans thread pool
+                    thumb_hash = make_hash(f"{meta['artist']}_{meta['album']}")
+                    thumb_path = await loop.run_in_executor(
+                        _thread_pool,
+                        _extract_thumbnail_sync,
+                        filepath, thumb_hash, settings.CACHE_DIR,
+                        settings.THUMB_SIZE, settings.THUMB_LARGE_SIZE,
+                    )
+
                     if existing:
                         existing.title         = meta["title"]
                         existing.duration      = meta["duration"]
                         existing.track_number  = meta["track_number"]
                         existing.bitrate       = meta["bitrate"]
                         existing.format        = meta["format"]
+                        existing.image         = thumb_path
+                        existing.image_hash    = thumb_hash
                         existing.artist_id     = artist.id if artist else None
                         existing.album_id      = album.id  if album  else None
                         existing.date_modified = mtime
@@ -302,6 +365,8 @@ class LibraryScanner:
                             sample_rate=meta["sample_rate"],
                             format=meta["format"],
                             file_size=os.path.getsize(filepath),
+                            image=thumb_path,
+                            image_hash=thumb_hash,
                             hash=make_hash(filepath),
                             artist_id=artist.id if artist else None,
                             album_id=album.id  if album  else None,
@@ -480,13 +545,6 @@ class LibraryScanner:
             )
             db.add(album)
             await db.flush()
-            
-            # Fetch Deezer cover URL for new albums
-            artist_name = artist.name if artist else meta.get("artist", "")
-            cover_url = await _fetch_deezer_album_cover(artist_name, title)
-            if cover_url:
-                album.deezer_cover_url = cover_url
-            await asyncio.sleep(0.1)  # Rate limit Deezer API
         return album
 
 

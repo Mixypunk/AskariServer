@@ -13,7 +13,9 @@ from ..config import settings
 compat_router = APIRouter()
 logger = logging.getLogger(__name__)
 
-
+# Extensions et noms de pochettes a chercher dans les dossiers (comme Swing Music)
+IMG_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+IMG_HIERARCHY   = ["cover", "front", "folder", "album", "artwork", "back"]
 
 
 def _webp_response(path: str) -> Response:
@@ -21,6 +23,183 @@ def _webp_response(path: str) -> Response:
         return FileResponse(path, media_type="image/webp")
     return Response(status_code=404)
 
+
+def _find_folder_cover(audio_filepath: str) -> str | None:
+    """
+    Cherche une pochette dans le meme dossier que le fichier audio.
+    Ordre : cover.jpg > front.jpg > folder.jpg > album.jpg > premiere image trouvee
+    (exactement comme Swing Music)
+    """
+    try:
+        folder = Path(audio_filepath).parent
+        if not folder.exists():
+            return None
+
+        images = [f for f in folder.iterdir() if f.suffix.lower() in IMG_EXTENSIONS]
+        if not images:
+            return None
+
+        # Priorite par nom
+        for name in IMG_HIERARCHY:
+            for img in images:
+                if img.stem.lower().startswith(name):
+                    return str(img)
+
+        # Sinon premiere image
+        return str(images[0])
+    except Exception as e:
+        logger.debug(f"find_folder_cover error: {e}")
+        return None
+
+
+def _cache_cover(audio_filepath: str, thumb_hash: str) -> str | None:
+    """
+    Extrait et met en cache la pochette d'un fichier audio ou de son dossier.
+    Retourne le chemin du fichier cache cree, ou None.
+    """
+    try:
+        from PIL import Image
+        import io
+        import mutagen
+        from mutagen.id3 import ID3
+        from mutagen.flac import FLAC
+        from mutagen.mp4 import MP4
+
+        img_data = None
+        ext = Path(audio_filepath).suffix.lower()
+
+        # 1. Essai tags embarques
+        try:
+            if ext == ".mp3":
+                tags = ID3(audio_filepath)
+                for tag in tags.values():
+                    if hasattr(tag, "FrameID") and tag.FrameID == "APIC":
+                        img_data = tag.data
+                        break
+            elif ext == ".flac":
+                audio = FLAC(audio_filepath)
+                if audio.pictures:
+                    img_data = audio.pictures[0].data
+            elif ext in (".m4a", ".aac"):
+                audio = MP4(audio_filepath)
+                if "covr" in audio.tags:
+                    img_data = bytes(audio.tags["covr"][0])
+        except Exception:
+            pass
+
+        # 2. Fallback : image dans le dossier
+        if not img_data:
+            folder_cover = _find_folder_cover(audio_filepath)
+            if folder_cover:
+                img = Image.open(folder_cover).convert("RGB")
+            else:
+                return None
+        else:
+            img = Image.open(io.BytesIO(img_data)).convert("RGB")
+
+        # Sauvegarder en cache
+        os.makedirs(settings.CACHE_DIR, exist_ok=True)
+        thumb_path = os.path.join(settings.CACHE_DIR, f"{thumb_hash}.webp")
+        thumb = img.copy()
+        thumb.thumbnail((300, 300))
+        thumb.save(thumb_path, "WEBP", quality=85)
+
+        # Version HD
+        hd_path = os.path.join(settings.CACHE_DIR, f"{thumb_hash}_hd.webp")
+        if not os.path.exists(hd_path):
+            hd = img.copy()
+            hd.thumbnail((600, 600))
+            hd.save(hd_path, "WEBP", quality=92)
+
+        return thumb_path
+
+    except Exception as e:
+        logger.debug(f"cache_cover error for {audio_filepath}: {e}")
+        return None
+
+
+async def _get_or_cache_thumbnail(image_hash: str) -> str | None:
+    """
+    Cherche le thumbnail en cache, sinon le genere a partir de la DB.
+    """
+    thumb_path = os.path.join(settings.CACHE_DIR, f"{image_hash}.webp")
+    if os.path.exists(thumb_path):
+        return thumb_path
+
+    # Chercher un fichier audio avec ce image_hash dans la DB
+    try:
+        from ..database import AsyncSessionLocal, Song
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(Song)
+                .options(selectinload(Song.artist), selectinload(Song.album))
+                .where(Song.image_hash == image_hash)
+                .limit(1)
+            )
+            song = result.scalar_one_or_none()
+            if not song:
+                # Essai par album hash
+                from ..database import Album
+                alb_r = await db.execute(
+                    select(Album).where(Album.hash == image_hash).limit(1))
+                album = alb_r.scalar_one_or_none()
+                if album:
+                    # Prendre le premier titre de l'album
+                    s_r = await db.execute(
+                        select(Song).where(Song.album_id == album.id).limit(1))
+                    song = s_r.scalar_one_or_none()
+
+            if song and song.filepath and os.path.exists(song.filepath):
+                return _cache_cover(song.filepath, image_hash)
+    except Exception as e:
+        logger.debug(f"get_or_cache_thumbnail error: {e}")
+
+    return None
+
+
+# ── ROUTES IMAGES ─────────────────────────────────────────────────────────────
+
+@compat_router.get("/img/artwork/{image_hash:path}")
+async def get_artwork(image_hash: str):
+    """Sert la pochette HD d'un titre ou album"""
+    clean = image_hash.split("?")[0].replace(".webp", "").strip("/")
+    
+    hd_path = os.path.join(settings.CACHE_DIR, f"{clean}_hd.webp")
+    if os.path.exists(hd_path):
+        return FileResponse(hd_path, media_type="image/webp")
+        
+    thumb_path = os.path.join(settings.CACHE_DIR, f"{clean}.webp")
+    if os.path.exists(thumb_path):
+        return FileResponse(thumb_path, media_type="image/webp")
+
+    generated = await _get_or_cache_thumbnail(clean)
+    if generated and os.path.exists(generated):
+        # Essayer de voir si le hd a été généré entre temps
+        if os.path.exists(hd_path):
+            return FileResponse(hd_path, media_type="image/webp")
+        return FileResponse(generated, media_type="image/webp")
+
+    return Response(status_code=404)
+
+@compat_router.get("/img/thumbnail/{image_hash:path}")
+async def get_thumbnail(image_hash: str):
+    """Sert la pochette d'un titre ou album"""
+    # Nettoyer le hash (enlever .webp et query params)
+    clean = image_hash.split("?")[0].replace(".webp", "").strip("/")
+
+    thumb_path = os.path.join(settings.CACHE_DIR, f"{clean}.webp")
+    if os.path.exists(thumb_path):
+        return FileResponse(thumb_path, media_type="image/webp")
+
+    # Generer si possible
+    generated = await _get_or_cache_thumbnail(clean)
+    if generated and os.path.exists(generated):
+        return FileResponse(generated, media_type="image/webp")
+
+    return Response(status_code=404)
 
 
 @compat_router.get("/img/artist/small/{artist_hash:path}")
@@ -56,7 +235,32 @@ async def _serve_artist_image(artist_hash: str) -> Response:
     if os.path.exists(path):
         return FileResponse(path, media_type="image/webp")
 
-    # 3. If all fails (which it shouldn't because of avatar), return 404
+    # 3. Fallback : pochette du premier album de l'artiste
+    try:
+        from ..database import AsyncSessionLocal, Artist, Song
+        from ..scanner import make_hash, make_artist_hash
+        from sqlalchemy import select
+
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(Artist))
+            artists = result.scalars().all()
+            artist = next((a for a in artists if make_artist_hash(a.name) == clean), None)
+            if artist:
+                song_r = await db.execute(
+                    select(Song).where(Song.artist_id == artist.id).limit(1))
+                song = song_r.scalar_one_or_none()
+                if song and song.image_hash:
+                    thumb = os.path.join(settings.CACHE_DIR, f"{song.image_hash}.webp")
+                    if os.path.exists(thumb):
+                        logger.debug(f"Artist fallback to album cover: {thumb}")
+                        return FileResponse(thumb, media_type="image/webp")
+                    # Generer la pochette si manquante
+                    generated = await _get_or_cache_thumbnail(song.image_hash)
+                    if generated and os.path.exists(generated):
+                        return FileResponse(generated, media_type="image/webp")
+    except Exception as e:
+        logger.debug(f"artist fallback error: {e}")
+
     logger.debug(f"No image found for artist hash: {clean}")
     return Response(status_code=404)
 

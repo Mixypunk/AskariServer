@@ -98,7 +98,7 @@ def song_to_dict(s: Song, fav_ids: set = None) -> dict:
         "date":         str(s.year) if s.year else None,
         "genre":        s.genre or "",
         "filepath":     s.filepath,
-        "image":        (s.album.deezer_cover_url or "") if s.album else "",
+        "image":        s.image_hash or album_hash,
         "format":       s.format or "",
         "bitrate":      s.bitrate or 0,
         "sample_rate":  s.sample_rate or 0,
@@ -209,7 +209,7 @@ def album_to_dict(a: Album) -> dict:
         "count":        a.track_count,
         "trackcount":   a.track_count,
         "duration":     a.duration,
-        "image":        a.deezer_cover_url or "",
+        "image":        a.hash,
     }
 
 
