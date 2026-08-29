@@ -18,7 +18,7 @@ from ..scanner import make_hash, make_artist_hash
 
 # ── Cache memoire simple (TTL 5 minutes) ──────────────────────────────────────
 _cache: dict = {}   # { key: (timestamp, data) }
-_CACHE_TTL = 300    # secondes
+_CACHE_TTL = 0      # secondes (desactivé pour éviter les bugs multi-workers)
 
 def _cache_get(key: str):
     entry = _cache.get(key)
