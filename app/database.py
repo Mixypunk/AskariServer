@@ -86,7 +86,7 @@ class Song(Base):
     file_size    = Column(BigInteger, nullable=True)
     hash         = Column(String(32), unique=True, nullable=False, index=True)
     image        = Column(String(500), nullable=True)
-    image_hash   = Column(String(255), nullable=True)
+    image_hash   = Column(String(32), nullable=True, index=True)
     play_count   = Column(Integer, default=0, index=True)
     last_played  = Column(DateTime, nullable=True)
     date_added   = Column(DateTime, default=datetime.utcnow, index=True)

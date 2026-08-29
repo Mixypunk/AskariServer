@@ -29,7 +29,7 @@ services:
       MUSIC_DIRS: "/music"
       AUTO_SCAN_ON_START: "true"
       SCAN_INTERVAL_HOURS: "24"
-      CACHE_DIR: "/music/img/artwork"
+      CACHE_DIR: "/data/cache"
 
       # ── Audio ────────────────────────────────────────────────────────────
       TRANSCODING_ENABLED: "true"
