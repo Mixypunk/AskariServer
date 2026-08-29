@@ -65,7 +65,6 @@ class Album(Base):
     hash        = Column(String(32), unique=True, nullable=False, index=True)
     track_count = Column(Integer, default=0)
     duration    = Column(Integer, default=0)
-    deezer_cover_url = Column(String(500), nullable=True)
     artist      = relationship("Artist", back_populates="albums")
     songs       = relationship("Song", back_populates="album")
 
@@ -86,6 +85,8 @@ class Song(Base):
     format       = Column(String(10), nullable=True)
     file_size    = Column(BigInteger, nullable=True)
     hash         = Column(String(32), unique=True, nullable=False, index=True)
+    image        = Column(String(500), nullable=True)
+    image_hash   = Column(String(255), nullable=True)
     play_count   = Column(Integer, default=0, index=True)
     last_played  = Column(DateTime, nullable=True)
     date_added   = Column(DateTime, default=datetime.utcnow, index=True)
