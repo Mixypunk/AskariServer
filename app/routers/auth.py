@@ -18,9 +18,21 @@ router = APIRouter()
 security = HTTPBearer(auto_error=False)
 
 
-# ── Rate limiting simple en memoire ────────────────────────────────────────────
+# ── Rate limiting & Client IP (Compatible Reverse Proxy) ─────────────────────────
 # { ip: [(timestamp, ...), ...] }
 _login_attempts: dict = defaultdict(list)
+_user_token_revoked_after: dict = {}  # { user_id: timestamp_revocation }
+
+def _get_client_ip(request: Request) -> str:
+    """Extrait la véritable IP client en tenant compte des reverse proxies si activé."""
+    if settings.TRUST_PROXY_HEADERS:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+        real_ip = request.headers.get("x-real-ip")
+        if real_ip:
+            return real_ip.strip()
+    return request.client.host if request.client else "unknown"
 
 def _check_rate_limit(ip: str) -> None:
     now = time.time()
@@ -53,13 +65,19 @@ class RefreshRequest(BaseModel):
 
 # ── JWT helpers ────────────────────────────────────────────────────────────────
 def create_token(user_id: int, token_type: str = "access") -> str:
-    expire = datetime.utcnow() + (
+    now = datetime.utcnow()
+    expire = now + (
         timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         if token_type == "access"
         else timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     )
     return jwt.encode(
-        {"sub": str(user_id), "type": token_type, "exp": expire},
+        {
+            "sub": str(user_id),
+            "type": token_type,
+            "exp": expire,
+            "iat": int(now.timestamp()),
+        },
         settings.SECRET_KEY, algorithm="HS256"
     )
 
@@ -89,7 +107,16 @@ async def get_current_user(
     payload = decode_token(raw_token)
     if payload.get("type") not in ("access", "stream"):
         raise HTTPException(status_code=401, detail="Token invalide")
-    user = await db.get(User, int(payload["sub"]))
+
+    user_id = int(payload["sub"])
+
+    # Vérification de révocation de session (après déconnexion)
+    iat = payload.get("iat")
+    if iat and user_id in _user_token_revoked_after:
+        if iat < _user_token_revoked_after[user_id]:
+            raise HTTPException(status_code=401, detail="Session révoquée. Veuillez vous reconnecter.")
+
+    user = await db.get(User, user_id)
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="Utilisateur introuvable")
     user.last_seen = datetime.utcnow()
@@ -106,8 +133,8 @@ async def require_admin(user: User = Depends(get_current_user)) -> User:
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @router.post("/login", response_model=TokenResponse)
 async def login(req: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
-    # Rate limiting par IP
-    client_ip = request.client.host if request.client else "unknown"
+    # Rate limiting par IP (compatible Reverse Proxy)
+    client_ip = _get_client_ip(request)
     _check_rate_limit(client_ip)
 
     identifier = req.username.strip()
@@ -151,7 +178,15 @@ async def refresh_token(req: RefreshRequest, db: AsyncSession = Depends(get_db))
     payload = decode_token(req.token)
     if payload.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Token de refresh invalide")
-    user = await db.get(User, int(payload["sub"]))
+    user_id = int(payload["sub"])
+
+    # Vérification de révocation de session
+    iat = payload.get("iat")
+    if iat and user_id in _user_token_revoked_after:
+        if iat < _user_token_revoked_after[user_id]:
+            raise HTTPException(status_code=401, detail="Session révoquée. Veuillez vous reconnecter.")
+
+    user = await db.get(User, user_id)
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="Utilisateur introuvable")
     return {
@@ -166,7 +201,11 @@ async def get_user_info(user: User = Depends(get_current_user)):
 
 
 @router.get("/users")
-async def list_users_public(db: AsyncSession = Depends(get_db)):
+async def list_users_public(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Liste les utilisateurs actifs (authentification requise pour éviter l'énumération publique)."""
     result = await db.execute(select(User).where(User.is_active == True))
     users = result.scalars().all()
     return {"users": [{"username": u.username} for u in users]}
@@ -194,6 +233,8 @@ async def list_users_without_email(
 
 @router.post("/logout")
 async def logout(user: User = Depends(get_current_user)):
+    """Invalide immédiatement les tokens actifs de l'utilisateur."""
+    _user_token_revoked_after[user.id] = time.time()
     return {"message": "Deconnecte"}
 
 
@@ -222,7 +263,10 @@ async def setup(req: SetupRequest, db: AsyncSession = Depends(get_db)):
 _pair_codes: dict = {}
 
 @router.get("/pair/code")
-async def generate_pair_code(user: User = Depends(get_current_user)):
+async def generate_pair_code(
+    request: Request,
+    user: User = Depends(get_current_user),
+):
     code = secrets.token_urlsafe(16)
     import datetime as dt
     _pair_codes[code] = {
@@ -235,7 +279,12 @@ async def generate_pair_code(user: User = Depends(get_current_user)):
     for k in expired:
         del _pair_codes[k]
 
-    server_url = settings.ALLOWED_ORIGINS.split(",")[0].strip() if settings.ALLOWED_ORIGINS else ""
+    if settings.ALLOWED_ORIGINS.strip() and "*" not in settings.ALLOWED_ORIGINS:
+        server_url = settings.ALLOWED_ORIGINS.split(",")[0].strip().rstrip("/")
+    else:
+        # Fallback dynamique sur l'URL réelle de la requête pour garantir une URL QR valide
+        server_url = str(request.base_url).rstrip("/")
+
     return {
         "code": code,
         "expires_in": 300,
@@ -331,7 +380,7 @@ async def create_tv_pair_code(
     """
     from ..database import TvPairCode
 
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _get_client_ip(request)
     _check_tv_rate(client_ip)
 
     now = datetime.utcnow()

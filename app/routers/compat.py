@@ -3,6 +3,7 @@ import asyncio
 Routes images et compatibilite Swing Music
 """
 import os
+import re
 import logging
 from pathlib import Path
 from fastapi import APIRouter
@@ -12,6 +13,18 @@ from ..config import settings
 
 compat_router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_hash(h: str) -> str:
+    """
+    Protège contre le path traversal :
+    - Supprime les query params (?foo=bar)
+    - Retire l'extension .webp
+    - N'autorise que les caractères alphanumériques, tirets et underscores
+    Tout autre caractère (/, .., \, etc.) est éliminé.
+    """
+    raw = h.split("?")[0].replace(".webp", "").strip("/")
+    return re.sub(r"[^a-zA-Z0-9_-]", "", raw)
 
 # Extensions et noms de pochettes a chercher dans les dossiers (comme Swing Music)
 IMG_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -165,7 +178,7 @@ async def _get_or_cache_thumbnail(image_hash: str) -> str | None:
 @compat_router.get("/img/artwork/{image_hash:path}")
 async def get_artwork(image_hash: str):
     """Sert la pochette HD d'un titre ou album"""
-    clean = image_hash.split("?")[0].replace(".webp", "").strip("/")
+    clean = _sanitize_hash(image_hash)
     
     hd_path = os.path.join(settings.CACHE_DIR, f"{clean}_hd.webp")
     if os.path.exists(hd_path):
@@ -187,8 +200,8 @@ async def get_artwork(image_hash: str):
 @compat_router.get("/img/thumbnail/{image_hash:path}")
 async def get_thumbnail(image_hash: str):
     """Sert la pochette d'un titre ou album"""
-    # Nettoyer le hash (enlever .webp et query params)
-    clean = image_hash.split("?")[0].replace(".webp", "").strip("/")
+    # Nettoyer le hash (enlever .webp et query params) + protection path traversal
+    clean = _sanitize_hash(image_hash)
 
     thumb_path = os.path.join(settings.CACHE_DIR, f"{clean}.webp")
     if os.path.exists(thumb_path):
@@ -218,10 +231,8 @@ async def get_artist_image(artist_hash: str):
 
 
 async def _serve_artist_image(artist_hash: str) -> Response:
-    # Nettoyer le hash : enlever .webp, query params, slashes
-    clean = artist_hash.split("?")[0].strip("/")
-    if clean.endswith(".webp"):
-        clean = clean[:-5]
+    # Nettoyer le hash : protection path traversal (caractères alphanumériques, tirets, underscores uniquement)
+    clean = _sanitize_hash(artist_hash)
     
     logger.debug(f"Artist image request: original={artist_hash!r} clean={clean!r}")
 
@@ -392,6 +403,6 @@ def _make_avatar(name: str, save_path: str):
 
 @compat_router.get("/img/playlist/{image_hash:path}")
 async def get_playlist_image(image_hash: str):
-    clean = image_hash.split("?")[0].replace(".webp", "").strip("/")
+    clean = _sanitize_hash(image_hash)
     path = os.path.join(settings.CACHE_DIR, f"playlist_{clean}.webp")
     return _webp_response(path)

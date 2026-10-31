@@ -83,6 +83,25 @@ async def websocket_endpoint(ws: WebSocket, token: str):
         await ws.close(code=4001, reason="Token invalide")
         return
 
+    # Vérifier que le type de token est autorisé (pas un refresh token par exemple)
+    token_type = payload.get("type", "access")
+    if token_type not in ("access", "stream"):
+        await ws.close(code=4001, reason="Type de token invalide pour WebSocket")
+        return
+
+    # Vérifier que le compte utilisateur est toujours actif en base
+    try:
+        from ..database import AsyncSessionLocal, User as UserModel
+        async with AsyncSessionLocal() as db:
+            db_user = await db.get(UserModel, user_id)
+            if not db_user or not getattr(db_user, "is_active", True):
+                await ws.close(code=4001, reason="Compte inactif ou supprimé")
+                return
+    except Exception as e:
+        logger.warning(f"WS: impossible de vérifier le compte user {user_id}: {e}")
+        await ws.close(code=4001, reason="Erreur de validation du compte")
+        return
+
     await manager.connect(ws, user_id)
 
     try:

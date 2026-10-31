@@ -94,6 +94,10 @@ async def download_deezer_track(
 ):
     if not settings.DEEZER_ARL:
         raise HTTPException(status_code=500, detail="DEEZER_ARL non configuré sur le serveur.")
+
+    # Vérification des droits : seuls les admins et les users avec can_download=True peuvent télécharger
+    if not getattr(user, "can_download", False) and getattr(user, "role", "") != "admin":
+        raise HTTPException(status_code=403, detail="Vous n'avez pas l'autorisation de télécharger via Deezer.")
         
     download_folder = settings.music_dirs_list[0] if settings.music_dirs_list else "/music"
     

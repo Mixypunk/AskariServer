@@ -66,14 +66,16 @@ app = FastAPI(
 
 # ── CORS ───────────────────────────────────────────────────────────────────────
 if "*" in settings.allowed_origins_list:
+    # Origines ouvertes : désactivation des credentials pour interdire le vol de données cross-origin (CSRF / data theft)
     app.add_middleware(
         CORSMiddleware,
-        allow_origin_regex=".*",
-        allow_credentials=True,
+        allow_origins=["*"],
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 else:
+    # Origines explicites : credentials autorisés pour les domaines déclarés de confiance
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_origins_list,
